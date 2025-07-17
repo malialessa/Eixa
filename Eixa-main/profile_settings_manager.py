@@ -1,4 +1,3 @@
-# profile_settings_manager.py
 import logging
 import re
 from typing import Dict, Any
@@ -6,7 +5,7 @@ import copy
 from datetime import datetime, timezone
 
 # Importa as funções de utilidade do Firestore
-from firestore_utils import get_user_profile_data, set_firestore_document, _normalize_goals_structure # Importa _normalize_goals_structure
+from firestore_utils import get_user_profile_data, set_firestore_document
 
 logger = logging.getLogger(__name__)
 
@@ -86,10 +85,37 @@ async def parse_and_update_profile_settings(user_id: str, message: str, user_pro
     return {"action_message": action_message, "profile_updated": profile_updated}
 
 
-# Remova esta função, pois ela está agora em firestore_utils.py
-# def _normalize_goals_structure(goals_data: dict) -> dict:
-#    ... (conteúdo removido) ...
-
+# NOVA FUNÇÃO AUXILIAR: Normaliza a estrutura de goals
+def _normalize_goals_structure(goals_data: dict) -> dict:
+    """
+    Normaliza a estrutura da seção 'goals' para garantir que sejam listas de dicionários
+    com a chave 'value'.
+    """
+    normalized_goals = {}
+    for term_type in ['short_term', 'medium_term', 'long_term']:
+        items = goals_data.get(term_type, [])
+        if isinstance(items, list):
+            normalized_items = []
+            for item in items:
+                if isinstance(item, str):
+                    normalized_items.append({"value": item})
+                elif isinstance(item, dict) and "value" in item:
+                    normalized_items.append(item)
+                else:
+                    # Se for um dicionário mas não tiver 'value', tenta usar o primeiro valor
+                    if isinstance(item, dict) and item:
+                        first_value = next(iter(item.values()), None) # Pega o primeiro valor do dict
+                        if first_value:
+                            normalized_items.append({"value": str(first_value)})
+                        else:
+                            logger.warning(f"Unexpected empty dict in goal item for {term_type}: {item}. Skipping.")
+                    else:
+                        logger.warning(f"Unexpected goal item format for {term_type}: {item}. Skipping.")
+            normalized_goals[term_type] = normalized_items
+        else:
+            logger.warning(f"Goals '{term_type}' is not a list. Skipping normalization.")
+            normalized_goals[term_type] = []
+    return normalized_goals
 
 async def update_profile_from_inferred_data(user_id: str, inferred_profile_data: Dict[str, Any], user_profile_template: Dict[str, Any]):
     """
@@ -163,14 +189,6 @@ async def update_profile_from_inferred_data(user_id: str, inferred_profile_data:
                 if isinstance(value, list):
                     # Lógica para listas: mesclar itens únicos
                     if key == "goals": # Trata goals separadamente devido à estrutura de dicionários
-                        # A inferência do LLM deve retornar goals já na estrutura {'short_term': [{'value':...}]}
-                        # Então, aplicamos a normalização aqui para garantir consistência.
-                        # Ou você pode esperar que o LLM já devolva nessa estrutura e só mesclar.
-                        # Se o LLM retornar { "goals": { "short_term": ["Tarefa X"] } }
-                        # _normalize_goals_structure pode ajudar.
-                        # No entanto, a forma como o LLM é instruído em prompt_config.yaml
-                        # espera {"long_term": [{"value": "..."}]}
-                        # Então, se o LLM obedecer, podemos mesclar diretamente
                         for term_type in ['long_term', 'medium_term', 'short_term']:
                             if term_type in value and isinstance(value[term_type], list):
                                 current_goals_list = target_section.setdefault(term_type, [])

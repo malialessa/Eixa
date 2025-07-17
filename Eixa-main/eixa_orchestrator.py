@@ -1,4 +1,3 @@
-# eixa_orchestrator.py
 import logging
 import asyncio
 from datetime import date, datetime, timezone, timedelta
@@ -12,23 +11,23 @@ from memory_utils import (
     get_emotional_memories,
     get_sabotage_patterns,
 )
-from task_manager import parse_and_update_agenda_items, parse_and_update_project_items # Essas funções não serão mais chamadas diretamente para CRUD do LLM
+from task_manager import parse_and_update_agenda_items, parse_and_update_project_items
 from eixa_data import get_all_daily_tasks, save_daily_tasks_data, get_project_data, save_project_data, get_user_history, get_all_projects 
 
-from vertex_utils import call_gemini_api, get_embedding # get_embedding aqui
-from vectorstore_utils import add_memory_to_vectorstore, get_relevant_memories # add_memory_to_vectorstore e get_relevant_memories aqui
+from vertex_utils import call_gemini_api
+from vectorstore_utils import get_embedding, add_memory_to_vectorstore, get_relevant_memories
 
 # Importações de firestore_utils para operar com o Firestore
 from firestore_utils import get_user_profile_data, get_firestore_document_data, set_firestore_document, save_interaction
 from google.cloud import firestore
 
 from nudger import analyze_for_nudges
-from user_behavior import track_repetition # Pode remover se não estiver usando ativamente aqui para decisão
+from user_behavior import track_repetition
 from personal_checkpoint import get_latest_self_eval
 from translation_utils import detect_language, translate_text
 
 import os
-# Remova o 'import yaml' pois o carregamento será feito por app_config_loader
+import yaml
 import pytz
 
 from config import DEFAULT_MAX_OUTPUT_TOKENS, DEFAULT_TEMPERATURE, DEFAULT_TIMEZONE, USERS_COLLECTION, TOP_LEVEL_COLLECTIONS_MAP, GEMINI_VISION_MODEL, GEMINI_TEXT_MODEL 
@@ -36,33 +35,42 @@ from config import DEFAULT_MAX_OUTPUT_TOKENS, DEFAULT_TEMPERATURE, DEFAULT_TIMEZ
 # CORREÇÃO CRÍTICA AQUI: Importar parse_incoming_input
 from input_parser import parse_incoming_input
 
-# Importe o novo carregador de configurações
-from app_config_loader import get_eixa_templates
-
-# Importe o CRUD Orchestrator (já estava ok, mas reforçando)
-from crud_orchestrator import orchestrate_crud_action
-
 from profile_settings_manager import parse_and_update_profile_settings, update_profile_from_inferred_data
 
 logger = logging.getLogger(__name__)
 
-# Remova estas variáveis globais e a função _initialize_templates
-# _base_eixa_persona_template_text = None
-# _user_profile_template_content = None
-# _user_flags_template_content = None
+_base_eixa_persona_template_text = None
+_user_profile_template_content = None
+_user_flags_template_content = None
 
-# Remova _initialize_templates, pois get_eixa_templates fará isso
-# def _initialize_templates():
-#     global _base_eixa_persona_template_text, _user_profile_template_content, _user_flags_template_content
-#     if _base_eixa_persona_template_text is None:
-#         _prompt_config_data = _load_yaml_config('prompt_config.yaml', {}, "prompt config")
-#         _base_eixa_persona_template_text = _prompt_config_data.get('base_eixa_persona', '')
+def _load_yaml_config(filepath: str, default_value: dict = None, log_name: str = "config"):
+    if default_value is None:
+        default_value = {}
+    try:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        full_filepath = os.path.join(current_dir, filepath)
+        with open(full_filepath, 'r', encoding='utf-8') as f:
+            config_data = yaml.safe_load(f)
+        logger.info(f"{log_name.capitalize()} loaded successfully from {full_filepath}.")
+        return config_data if config_data is not None else default_value
+    except FileNotFoundError:
+        logger.warning(f"{filepath} not found. Running without a {log_name}.", exc_info=True)
+        return default_value
+    except yaml.YAMLError:
+        logger.warning(f"Error loading {filepath}. Running without a {log_name}.", exc_info=True)
+        return default_value
 
-#         _user_profile_template_full = _load_yaml_config('minimal_user_profile_template.yaml', {}, "minimal user profile template")
-#         _user_profile_template_content = _user_profile_template_full.get('user_profile', {})
+def _initialize_templates():
+    global _base_eixa_persona_template_text, _user_profile_template_content, _user_flags_template_content
+    if _base_eixa_persona_template_text is None:
+        _prompt_config_data = _load_yaml_config('prompt_config.yaml', {}, "prompt config")
+        _base_eixa_persona_template_text = _prompt_config_data.get('base_eixa_persona', '')
 
-#         _user_flags_template_full = _load_yaml_config('user_flags.yaml', {}, "user flags template")
-#         _user_flags_template_content = _user_flags_template_full.get('behavior_flags', {})
+        _user_profile_template_full = _load_yaml_config('minimal_user_profile_template.yaml', {}, "minimal user profile template")
+        _user_profile_template_content = _user_profile_template_full.get('user_profile', {})
+
+        _user_flags_template_full = _load_yaml_config('user_flags.yaml', {}, "user flags template")
+        _user_flags_template_content = _user_flags_template_full.get('behavior_flags', {})
 
 async def _extract_crud_intent_with_llm(user_id: str, user_message: str, history: list, gemini_api_key: str, gemini_text_model: str) -> dict | None:
     system_instruction_for_crud_extraction = """
@@ -98,8 +106,7 @@ async def _extract_crud_intent_with_llm(user_id: str, user_message: str, history
     """
 
     llm_history = []
-    # Limita o histórico para evitar estourar o contexto do LLM
-    for turn in history[-5:]: 
+    for turn in history[-5:]:
         if turn.get("input"):
             llm_history.append({"role": "user", "parts": [{"text": turn.get("input")}]})
         if turn.get("output"):
@@ -113,7 +120,7 @@ async def _extract_crud_intent_with_llm(user_id: str, user_message: str, history
             model_name=gemini_text_model,
             conversation_history=llm_history,
             system_instruction=system_instruction_for_crud_extraction,
-            max_output_tokens=1024,
+            max_output_tokens=1024, # Aumentar para evitar truncamento de JSON
             temperature=0.1
         )
 
@@ -137,9 +144,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                                      gemini_vision_model: str = GEMINI_VISION_MODEL, # DEFAULT do config
                                      firestore_collection_interactions: str = 'interactions',
                                      debug_mode: bool = False) -> Dict[str, Any]:
-    
-    # Carrega os templates via o novo módulo centralizado
-    base_eixa_persona_template_text, user_profile_template_content, user_flags_template_content = get_eixa_templates()
+    _initialize_templates()
 
     debug_info_logs = []
 
@@ -159,8 +164,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         logger.critical(f"ORCHESTRATOR | Failed to ensure main user document in '{USERS_COLLECTION}' for '{user_id}': {e}", exc_info=True)
         return {"status": "error", "response": f"Erro interno ao inicializar dados do usuário: {e}", "debug_info": debug_info_logs}
 
-    # Passa o template de perfil para a função que o carrega/cria
-    user_profile = await get_user_profile_data(user_id, user_profile_template_content)
+    user_profile = await get_user_profile_data(user_id, _user_profile_template_content)
     user_display_name = user_profile.get('name') if user_profile.get('name') else f"Usuário {user_id[:4]}..."
     logger.debug(f"ORCHESTRATOR | User profile loaded for '{user_id}'. Display name: '{user_display_name}'. Profile content keys: {list(user_profile.keys())}")
 
@@ -171,11 +175,10 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
 
     # Correct definition and usage of user_flags_data
     user_flags_data_raw = await get_firestore_document_data('flags', user_id)
-    # Usa user_flags_template_content para inicializar se não existir
-    user_flags_data = user_flags_data_raw.get("behavior_flags", user_flags_template_content) if user_flags_data_raw else user_flags_template_content
+    user_flags_data = user_flags_data_raw.get("behavior_flags", {}) if user_flags_data_raw else {}
 
-    # Se o documento de flags não existia, salva o template default
-    if not user_flags_data_raw:
+    if not user_flags_data:
+        user_flags_data = _user_flags_template_content
         await set_firestore_document('flags', user_id, {"behavior_flags": user_flags_data})
 
     mode_debug_on = debug_mode or user_flags_data.get("debug_mode", False)
@@ -217,15 +220,9 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             response_payload["response"] = "Aqui estão suas memórias emocionais recentes."
             logger.info(f"ORCHESTRATOR | Emotional memories requested and provided for user '{user_id}'.")
         elif view_request == "longTermMemory":
-            # Verificar a preferência do usuário para exibir o perfil completo
-            if user_profile.get('eixa_interaction_preferences', {}).get('display_profile_in_long_term_memory', False):
-                response_payload["html_view_data"]["long_term_memory"] = user_profile
-                response_payload["response"] = "Aqui está seu perfil de memória de longo prazo."
-                logger.info(f"ORCHESTRATOR | Long-term memory (profile) requested and provided for user '{user_id}'.")
-            else:
-                response_payload["status"] = "info"
-                response_payload["response"] = "A exibição do seu perfil completo na memória de longo prazo está desativada. Se desejar ativá-la, por favor me diga 'mostrar meu perfil'."
-                logger.info(f"ORCHESTRATOR | Long-term memory (profile) requested but display is disabled for user '{user_id}'.")
+            response_payload["html_view_data"]["long_term_memory"] = user_profile
+            response_payload["response"] = "Aqui está seu perfil de memória de longo prazo."
+            logger.info(f"ORCHESTRATOR | Long-term memory (profile) requested and provided for user '{user_id}'.")
         else:
             response_payload["status"] = "error"
             response_payload["response"] = "View solicitada inválida."
@@ -270,7 +267,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             item_id = payload_to_execute.get('item_id')
             data = payload_to_execute.get('data', {})
 
-            # import crud_orchestrator # Já importado no topo, mas para clareza em caso de movimento
+            from crud_orchestrator import orchestrate_crud_action
 
             # Adicionar este log para inspecionar o payload exato antes da chamada ao CRUD
             logger.debug(f"ORCHESTRATOR | Calling orchestrate_crud_action with payload from confirmation cache: {{'user_id': '{user_id}', 'item_type': '{item_type}', 'action': '{action}', 'item_id': '{item_id}', 'data': {data}}}")
@@ -313,9 +310,9 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 "action_confirmed": action,
                 "item_type_confirmed": item_type,
                 "crud_result_status": crud_response.get("status"), # Passa o status do CRUD para o frontend
-                "tarefas_ativas_injetadas": 0, # Placeholder, ajuste se necessário
-                "memoria_emocional_tags": [], # Placeholder, ajuste se necessário
-                "padroes_sabotagem_detectados": {}, # Placeholder, ajuste se necessário
+                "tarefas_ativas_injetadas": 0,
+                "memoria_emocional_tags": [],
+                "padroes_sabotagem_detectados": {},
             }
             await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
             return response_payload # Exit early after handling confirmation
@@ -360,12 +357,10 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
     logger.info(f"ORCHESTRATOR | Input parser results for user '{user_id}' - Model override: {gemini_model_override}, Prompt parts count: {len(user_prompt_parts)}.")
 
     # Try to detect explicit profile setting changes first (these are direct, no confirmation needed)
-    # Passa o template de perfil para a função
-    profile_settings_results = await parse_and_update_profile_settings(user_id, user_message_for_processing, user_profile_template_content)
+    profile_settings_results = await parse_and_update_profile_settings(user_id, user_message_for_processing, _user_profile_template_content)
     if profile_settings_results.get("profile_updated"):
         direct_action_message = profile_settings_results['action_message']
-        # Recarrega o user_profile após a atualização para ter certeza de que está atualizado
-        user_profile = await get_user_profile_data(user_id, user_profile_template_content)
+        user_profile = await get_user_profile_data(user_id, _user_profile_template_content)
         intent_detected_in_orchestrator = "configuracao_perfil"
         response_payload["response"] = direct_action_message
         response_payload["status"] = "success"
@@ -535,8 +530,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
 
     # --- Memória Vetorial (Contextualização de Longo prazo) ---
     if user_message_for_processing and gcp_project_id and region:
-        # Passar explicitamente o modelo para get_embedding
-        user_query_embedding = await get_embedding(user_message_for_processing, gcp_project_id, region, model_name=GEMINI_TEXT_MODEL)
+        user_query_embedding = await get_embedding(user_message_for_processing, gcp_project_id, region)
         if user_query_embedding:
             relevant_memories = await get_relevant_memories(user_id, user_query_embedding, n_results=5) 
             if relevant_memories:
@@ -577,27 +571,10 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
     debug_info_logs.append("Critical context generated for LLM.")
 
     # --- Construção do system_instruction dinâmico para o LLM (APRIMORADO) ---
-    # Usar a variável de template carregada do app_config_loader
-    base_persona_with_name = base_eixa_persona_template_text.replace("{{user_display_name}}", user_display_name)
+    base_persona_with_name = _base_eixa_persona_template_text.replace("{{user_display_name}}", user_display_name)
 
     contexto_perfil_str = f"--- CONTEXTO DO PERFIL DO USUÁRIO ({user_display_name}):\n"
     profile_summary_parts = []
-
-    # A verificação 'isinstance(user_profile.get('goals'), dict)' é importante
-    # porque get_user_profile_data agora normaliza os goals para listas de dicts.
-    # No entanto, se houver um problema e o tipo não for dicionário, esta verificação evita erro.
-    if user_profile.get('goals', {}) and isinstance(user_profile['goals'], dict):
-        if user_profile['goals'].get('long_term'):
-            # Agora os itens são {"value": "..."}
-            goals_text = [g.get('value', 'N/A') for g in user_profile['goals']['long_term'] if isinstance(g, dict)]
-            if goals_text: profile_summary_parts.append(f"  - Metas de Longo Prazo: {', '.join(goals_text)}")
-        if user_profile['goals'].get('medium_term'):
-            goals_text = [g.get('value', 'N/A') for g in user_profile['goals']['medium_term'] if isinstance(g, dict)]
-            if goals_text: profile_summary_parts.append(f"  - Metas de Médio Prazo: {', '.join(goals_text)}")
-        if user_profile['goals'].get('short_term'):
-            goals_text = [g.get('value', 'N/A') for g in user_profile['goals']['short_term'] if isinstance(g, dict)]
-            if goals_text: profile_summary_parts.append(f"  - Metas de Curto Prazo: {', '.join(goals_text)}")
-
 
     if user_profile.get('psychological_profile'):
         psych = user_profile['psychological_profile']
@@ -619,6 +596,9 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         project_names = [p.get('name', 'N/A') for p in user_profile['current_projects']]
         profile_summary_parts.append(f"  - Projetos Atuais: {', '.join(project_names)}")
 
+    if user_profile.get('goals', {}).get('long_term'):
+        goals_text = [g.get('value', 'N/A') for g in user_profile['goals']['long_term']]
+        profile_summary_parts.append(f"  - Metas de Longo Prazo: {', '.join(goals_text)}")
 
     if user_profile.get('eixa_interaction_preferences', {}).get('expected_eixa_actions'):
         actions_text = user_profile['eixa_interaction_preferences']['expected_eixa_actions']
@@ -698,8 +678,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
     logger.info(f"ORCHESTRATOR | Interaction saved for user '{user_id}'. Final response status: {response_payload['status']}.")
 
     if profile_update_json:
-        # Passa o template de perfil para a função que o atualiza
-        await update_profile_from_inferred_data(user_id, profile_update_json, user_profile_template_content)
+        await update_profile_from_inferred_data(user_id, profile_update_json, _user_profile_template_content)
         logger.info(f"ORCHESTRATOR | Profile updated based on LLM inference for user '{user_id}'.")
 
 
@@ -707,9 +686,10 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         # Note: If uploaded_file_data is present, gemini_final_model would be GEMINI_VISION_MODEL.
         # This embedding is for text interaction history, so using TEXT_MODEL is appropriate.
         text_for_embedding = f"User: {user_message_for_processing}\nAI: {final_ai_response}"
-        # Usar o modelo de embedding definido no config.py para texto (text-embedding-004)
-        # O parâmetro model_name é crucial para especificar o modelo para embeddings
-        interaction_embedding = await get_embedding(text_for_embedding, gcp_project_id, region, model_name=GEMINI_TEXT_MODEL) # Passar o modelo explicitamente
+        embedding_model_for_text = GEMINI_TEXT_MODEL # Usar o modelo de texto para gerar embeddings de texto
+        
+        # Assegurar que get_embedding usa o modelo de texto para embeddings baseados em texto
+        interaction_embedding = await get_embedding(text_for_embedding, gcp_project_id, region, embedding_model_for_text) # Passar o modelo explicitamente
         if interaction_embedding:
             current_utc_timestamp = datetime.now(timezone.utc).isoformat().replace(":", "-").replace(".", "_")
             await add_memory_to_vectorstore(

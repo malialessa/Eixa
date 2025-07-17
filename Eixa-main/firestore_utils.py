@@ -1,11 +1,10 @@
-# firestore_utils.py
 import logging
 from google.cloud import firestore
 from firestore_client_singleton import _initialize_firestore_client_instance
 from collections_manager import get_top_level_collection, get_user_doc_ref
 import copy
 from datetime import datetime, timezone
-import asyncio 
+import asyncio # Mantenha asyncio importado para asyncio.to_thread
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +44,6 @@ async def delete_firestore_document(logical_collection_name: str, document_id: s
         raise
 
 # NOVA FUNÇÃO AUXILIAR: Normaliza a estrutura de goals
-# Esta função será a única fonte de verdade para normalização de goals
 def _normalize_goals_structure(goals_data: dict) -> dict:
     """
     Normaliza a estrutura da seção 'goals' para garantir que sejam listas de dicionários
@@ -64,11 +62,7 @@ def _normalize_goals_structure(goals_data: dict) -> dict:
                 else:
                     # Se for um dicionário mas não tiver 'value', tenta usar o primeiro valor
                     if isinstance(item, dict) and item:
-                        first_value = next(iter(item.values()), None) # Pega o primeiro valor do dict
-                        if first_value:
-                            normalized_items.append({"value": str(first_value)})
-                        else:
-                            logger.warning(f"Unexpected empty dict in goal item for {term_type}: {item}. Skipping.")
+                        normalized_items.append({"value": str(list(item.values())[0])})
                     else:
                         logger.warning(f"Unexpected goal item format for {term_type}: {item}. Skipping.")
             normalized_goals[term_type] = normalized_items

@@ -31,18 +31,14 @@ async def call_gemini_api(
             "topP": 0.95,
             "topK": 40
         },
-        # Configurações de segurança:
-        # HARM_BLOCK_THRESHOLD_UNSPECIFIED: Usa o padrão do modelo (recomendado para a maioria dos casos).
-        # BLOCK_LOW_AND_ABOVE: Bloqueia conteúdo com probabilidade baixa, média ou alta de ser inseguro.
-        # BLOCK_NONE: Não bloqueia nada (menos seguro, use com extrema cautela e apenas se entender os riscos).
-        # A configuração padrão (`HARM_BLOCK_THRESHOLD_UNSPECIFIED`) geralmente é a melhor.
-        # Se você precisa de controle mais granular, considere `BLOCK_LOW_AND_ABOVE`.
-        # Para fins de exemplo, estou usando `HARM_BLOCK_THRESHOLD_UNSPECIFIED`
+        # Configurações de segurança: BLOCK_NONE significa que o modelo não será bloqueado
+        # por conteúdo potencialmente inseguro. Avalie este nível de permissividade
+        # de acordo com os requisitos de segurança e uso da sua aplicação.
         "safetySettings": [
-            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "HARM_BLOCK_THRESHOLD_UNSPECIFIED"},
-            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "HARM_BLOCK_THRESHOLD_UNSPECIFIED"},
-            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "HARM_BLOCK_THRESHOLD_UNSPECIFIED"},
-            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "HARM_BLOCK_THRESHOLD_UNSPECIFIED"},
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
         ],
     }
 

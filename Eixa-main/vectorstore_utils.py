@@ -1,4 +1,3 @@
-# vectorstore_utils.py
 import logging
 import asyncio
 from typing import List, Dict
@@ -12,16 +11,15 @@ from vertexai.language_models import TextEmbeddingModel # Importação corrigida
 # Importa o gerenciador de coleções e os utilitários do Firestore
 from collections_manager import get_top_level_collection
 from firestore_utils import set_firestore_document
-from config import EMBEDDING_MODEL_NAME # Importe EMBEDDING_MODEL_NAME para o default
+from config import EMBEDDING_MODEL_NAME
 
 logger = logging.getLogger(__name__)
 
 # --- Função para gerar embedding ---
-# Adiciona model_name como parâmetro opcional, com default do config
-async def get_embedding(text: str, project_id: str, location: str, model_name: str = EMBEDDING_MODEL_NAME) -> list[float] | None:
+async def get_embedding(text: str, project_id: str, location: str) -> list[float] | None:
     try:
         # Acessa o modelo de embedding usando a classe importada corretamente
-        model = TextEmbeddingModel.from_pretrained(model_name) # Usa o model_name passado ou default
+        model = TextEmbeddingModel.from_pretrained(EMBEDDING_MODEL_NAME)
 
         # CORREÇÃO: Mude 'predict' para 'get_embeddings'
         # model.get_embeddings retorna uma lista de objetos Embedding (no caso, um único objeto para um único texto).
