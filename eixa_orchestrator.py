@@ -1,3 +1,4 @@
+# eixa_orchestrator.py
 import logging
 import asyncio
 from datetime import date, datetime, timezone, timedelta
@@ -32,7 +33,7 @@ import pytz
 from config import DEFAULT_MAX_OUTPUT_TOKENS, DEFAULT_TEMPERATURE, DEFAULT_TIMEZONE, USERS_COLLECTION, TOP_LEVEL_COLLECTIONS_MAP, GEMINI_VISION_MODEL, GEMINI_TEXT_MODEL, EMBEDDING_MODEL_NAME 
 
 from input_parser import parse_incoming_input
-from app_config_loader import get_eixa_templates # Importa o carregador de templates
+from app_config_loader import get_eixa_templates 
 from crud_orchestrator import orchestrate_crud_action
 from profile_settings_manager import parse_and_update_profile_settings, update_profile_from_inferred_data
 
@@ -112,7 +113,6 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                                      debug_mode: bool = False) -> Dict[str, Any]:
     
     # Carrega os templates via o novo módulo centralizado
-    # user_profile_template_content aqui usará o "minimal"
     base_eixa_persona_template_text, user_profile_template_content, user_flags_template_content = get_eixa_templates()
 
     debug_info_logs = []
@@ -135,9 +135,8 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
 
     # Passa o template de perfil para a função que o carrega/cria
     user_profile = await get_user_profile_data(user_id, user_profile_template_content)
-    # NOVO: Se o perfil é novo e ainda não tem nome, usa "Novo Usuário EIXA" para as primeiras interações.
-    # Se o template minimalista não tiver 'name' inicial, ele começará como user_id.
-    user_display_name = user_profile.get('name') if user_profile.get('name') else f"Novo Usuário EIXA" # Fallback mais amigável
+    # NOVO: Fallback mais amigável se o nome não estiver no perfil
+    user_display_name = user_profile.get('name') if user_profile.get('name') else f"Novo Usuário EIXA" 
     logger.debug(f"ORCHESTRATOR | User profile loaded for '{user_id}'. Display name: '{user_display_name}'. Profile content keys: {list(user_profile.keys())}")
 
     eixa_state = user_profile.get('eixa_state', {})
@@ -212,6 +211,8 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
 
     user_input_for_saving = user_message or (uploaded_file_data.get('filename') if uploaded_file_data else "Ação do sistema")
 
+    # Adicionando debug para o idioma antes da chamada da API
+    logger.debug(f"ORCHESTRATOR | Raw user message for language detection: '{user_message}'")
     source_language = await detect_language(user_message or "Olá")
     response_payload["language"] = source_language
     logger.info(f"ORCHESTRATOR | Detected source language: '{source_language}' for user '{user_id}'.")
@@ -232,7 +233,21 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
     # --- Handle confirmation state FIRST ---
     if is_in_confirmation_state and confirmation_payload_cache:
         lower_message = user_message_for_processing.lower().strip()
-        if any(keyword in lower_message for keyword in ["sim", "ok", "confirmo", "confirma", "adicione", "crie", "pode", "certo", "beleza", "isso", "deletar", "excluir", "remover", "concluir", "finalizar", "ok, faça"]):
+        
+        # NOVO DEBUG: Logar a mensagem em minúsculas para entender a falha de correspondência
+        logger.debug(f"ORCHESTRATOR | Inside confirmation block. lower_message='{lower_message}'.")
+
+        # LISTA DE KEYWORDS MAIS EXAUSTIVA E ROBUSTA PARA CONFIRMAÇÃO
+        confirmation_keywords = [
+            "sim", "ok", "confirmo", "confirma", "adicione", "crie", "pode",
+            "certo", "beleza", "isso", "deletar", "excluir", "remover",
+            "concluir", "finalizar", "ok, faça",
+            "sim, por favor", "sim por favor", "claro", "definitivamente", # Adicionadas frases exatas e sinônimos
+            "vai", "fazer", "execute", "prossiga", "adiante" # Mais sinônimos
+        ]
+        
+        if any(keyword in lower_message for keyword in confirmation_keywords):
+            logger.debug(f"ORCHESTRATOR | Positive confirmation keyword detected: '{lower_message}'.")
             payload_to_execute = confirmation_payload_cache
             item_type = payload_to_execute.get('item_type')
             action = payload_to_execute.get('action')
@@ -248,7 +263,6 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             # Aprimoramento da mensagem final APÓS A CONFIRMAÇÃO DO CRUD
             if crud_response.get("status") == "success":
                 final_ai_response = crud_response.get("message", "Ação concluída com sucesso.")
-                # Adicionar uma frase de encorajamento ou próxima pergunta após a confirmação bem-sucedida
                 if action == "create":
                     final_ai_response += " Como posso te ajudar a dar os primeiros passos?"
                 elif action == "update" and data.get("completed"):
@@ -292,7 +306,8 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
             return response_payload 
 
-        elif any(keyword in lower_message for keyword in ["não", "nao", "cancela", "esquece", "pare", "não quero", "nao quero", "negativo"]):
+        elif any(keyword in lower_message for keyword in ["não", "nao", "cancela", "esquece", "pare", "não quero", "nao quero", "negativo", "desisto"]): # Adicionado mais opções para cancelamento
+            logger.debug(f"ORCHESTRATOR | Negative confirmation keyword detected: '{lower_message}'.")
             final_ai_response = "Ok, entendi. Ação cancelada."
             response_payload["status"] = "success" 
             try:
@@ -316,13 +331,17 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
             return response_payload 
         else:
+            # NOVO DEBUG: A mensagem é ambígua, re-promovendo.
+            logger.debug(f"ORCHESTRATOR | User response '{lower_message}' in confirmation state was ambiguous. Re-prompting.")
             response_payload["response"] = stored_confirmation_message 
             response_payload["status"] = "awaiting_confirmation"
-            logger.info(f"ORCHESTRATOR | User '{user_id}' in confirmation state, but response was ambiguous. Re-prompting.")
             await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
             return response_payload 
 
-    # --- If NOT in confirmation state (or if confirmation was just handled), proceed with normal flow ---
+    # --- Normal LLM conversation flow (if no CRUD intent detected) ---
+    # NOVO DEBUG: Entrando no fluxo de LLM normal
+    logger.debug(f"ORCHESTRATOR | Not in confirmation state or confirmation handled. Proceeding with LLM inference.")
+
     input_parser_results = await asyncio.to_thread(parse_incoming_input, user_message_for_processing, uploaded_file_data)
     user_prompt_parts = input_parser_results['prompt_parts_for_gemini']
     gemini_model_override = input_parser_results['gemini_model_override']
@@ -331,7 +350,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
     profile_settings_results = await parse_and_update_profile_settings(user_id, user_message_for_processing, user_profile_template_content)
     if profile_settings_results.get("profile_updated"):
         direct_action_message = profile_settings_results['action_message']
-        user_profile = await get_user_profile_data(user_id, user_profile_template_content) # Recarrega para ter certeza de que está atualizado
+        user_profile = await get_user_profile_data(user_id, user_profile_template_content) 
         intent_detected_in_orchestrator = "configuracao_perfil"
         response_payload["response"] = direct_action_message
         response_payload["status"] = "success"
@@ -456,6 +475,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         return response_payload
 
     # --- Normal LLM conversation flow (if no CRUD intent detected) ---
+    logger.debug(f"ORCHESTRATOR | Not in confirmation state or confirmation handled. Proceeding with LLM inference.")
     conversation_history = []
     for turn in full_history:
         if turn.get("input"):
@@ -529,10 +549,9 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
     contexto_perfil_str = f"--- CONTEXTO DO PERFIL DO USUÁRIO ({user_display_name}):\n"
     profile_summary_parts = []
 
-    # Aqui é a diferença do perfil minimal: as chaves podem estar vazias
+    # Ajustado para o perfil minimalista: verifica se as chaves existem e se as listas não estão vazias
     if user_profile.get('psychological_profile'):
         psych = user_profile['psychological_profile']
-        # Verifica se as listas existem e não estão vazias antes de tentar join
         if psych.get('personality_traits') and isinstance(psych['personality_traits'], list) and psych['personality_traits']: profile_summary_parts.append(f"  - Traços de Personalidade: {', '.join(psych['personality_traits'])}")
         if psych.get('diagnoses_and_conditions') and isinstance(psych['diagnoses_and_conditions'], list) and psych['diagnoses_and_conditions']: profile_summary_parts.append(f"  - Condições/Diagnósticos: {', '.join(psych['diagnoses_and_conditions'])}")
         if psych.get('historical_behavioral_patterns') and isinstance(psych['historical_behavioral_patterns'], list) and psych['historical_behavioral_patterns']: profile_summary_parts.append(f"  - Padrões Comportamentais Históricos: {', '.join(psych['historical_behavioral_patterns'])}")
@@ -543,7 +562,6 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
 
     if user_profile.get('communication_preferences'):
         comm_pref = user_profile['communication_preferences']
-        # Verifica se as chaves existem no dicionário antes de tentar acessá-las
         if comm_pref.get('tone_preference'): profile_summary_parts.append(f"  - Preferências de Comunicação (Tom): {comm_pref['tone_preference']}")
         if comm_pref.get('intervention_style'): profile_summary_parts.append(f"  - Preferências de Comunicação (Estilo de Intervenção): {comm_pref['intervention_style']}")
         if comm_pref.get('specific_no_gos') and isinstance(comm_pref['specific_no_gos'], list) and comm_pref['specific_no_gos']: profile_summary_parts.append(f"  - Regras Específicas para EIXA (NÃO FAZER): {'; '.join(comm_pref['specific_no_gos'])}")
@@ -625,8 +643,11 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 profile_update_json = profile_update_data.get('profile_update')
 
                 # CORREÇÃO ROBUSTA para remover o JSON da resposta
+                # Extrai o texto antes e depois do bloco JSON COM os backticks
                 pre_json_text = final_ai_response[:json_match.start()].strip()
                 post_json_text = final_ai_response[json_match.end():].strip()
+                
+                # Reconstrói a resposta sem o bloco JSON
                 final_ai_response = (pre_json_text + "\n\n" + post_json_text).strip()
                 final_ai_response = final_ai_response.replace('\n\n\n', '\n\n') # Limpa quebras de linha triplas
                 
@@ -692,6 +713,11 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
     if intent_detected_in_orchestrator == "projeto":
         emotional_tags.append("projeto_criado")
 
+    # Adicionado logs para depurar a detecção de padrões de sabotagem
+    sabotage_patterns_detected = await get_sabotage_patterns(user_id, 20, user_profile)
+    logger.debug(f"ORCHESTRATOR | Raw sabotage patterns detected: {sabotage_patterns_detected}")
+
+    # Certifica-se de que a detecção de tags emocionais use o lower_input
     if any(w in lower_input for w in ["frustrad", "cansad", "difícil", "procrastin", "adiando", "não consigo", "sobrecarregado"]):
         emotional_tags.append("frustração")
     if any(w in lower_input for w in ["animado", "feliz", "produtivo", "consegui"]):
@@ -728,8 +754,14 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         response_payload["response"] = nudge_message + "\n\n" + response_payload["response"]
         logger.info(f"ORCHESTRATOR | Generated nudge for user '{user_id}': '{nudge_message[:50]}...'.")
 
-    patterns = await get_sabotage_patterns(user_id, 20, user_profile)
-    filtered_patterns = {p: f for p, f in patterns.items() if f >= 2}
+    # Re-executar a detecção de padrões de sabotagem após a mensagem principal, se não foi feita antes
+    # ou para garantir que a resposta foi influenciada por ela.
+    # A detecção é chamada em get_sabotage_patterns.
+    # Certifique-se que get_sabotage_patterns é robusto e não depende de histórico *imediatamente* após a interação atual,
+    # mas sim do histórico persistido.
+
+    # A detecção de sabotagem foi chamada antes para o LLM. A exibição deve ser feita no final.
+    filtered_patterns = {p: f for p, f in sabotage_patterns_detected.items() if f >= 2} # Usa a variável de cima
     if filtered_patterns:
         response_payload["response"] += "\n\n⚠️ **Padrões de auto-sabotagem detectados:**\n" + "\n".join(f"- \"{p}\" ({str(f)} vezes)" for p, f in filtered_patterns.items())
         logger.info(f"ORCHESTRATOR | Detected and added {len(filtered_patterns)} sabotage patterns to response for user '{user_id}'.")
