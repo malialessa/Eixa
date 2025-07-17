@@ -4,7 +4,7 @@ import httpx
 import json
 import logging
 
-# NÃO IMPORTE get_embedding AQUI. Essa função foi movida para vectorstore_utils.py
+# Certifique-se de que a linha abaixo NÃO ESTÁ PRESENTE.
 # Remova: from vertexai.language_models import TextEmbeddingModel 
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,6 @@ async def call_gemini_api(
             "topP": 0.95,
             "topK": 40
         },
-        # Configurações de segurança:
         "safetySettings": [
             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "HARM_BLOCK_THRESHOLD_UNSPECIFIED"},
             {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "HARM_BLOCK_THRESHOLD_UNSPECIFIED"},
@@ -51,7 +50,7 @@ async def call_gemini_api(
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(api_endpoint, headers=headers, json=payload, params={"key": api_key})
-            response.raise_for_status() # Levanta uma exceção para status HTTP 4xx/5xx
+            response.raise_for_status() 
             response_json = response.json()
 
             if debug_mode:
@@ -59,28 +58,21 @@ async def call_gemini_api(
 
             if response_json.get('candidates'):
                 first_candidate = response_json['candidates'][0]
-                
-                # Extrai o motivo da finalização para detectar respostas truncadas
                 finish_reason = first_candidate.get('finishReason', 'UNKNOWN')
-                
                 content = first_candidate.get('content', {})
                 parts = content.get('parts', [{}])
                 generated_text = parts[0].get('text')
                 
                 if generated_text:
                     logger.info(f"Gemini response text extracted successfully (first 100 chars): '{generated_text[:100]}...'")
-                    
-                    # Adiciona um aviso se a resposta foi truncada pelo modelo
                     if finish_reason != 'STOP':
                         logger.warning(f"Gemini response finished with reason: {finish_reason}. Appending truncation warning.")
                         generated_text += "\n\n[⚠️ AVISO: A resposta pode estar incompleta, pois o modelo atingiu um limite.]"
-                        
                     return generated_text
                 else:
                     logger.warning(f"Gemini API response has candidates but no text content in parts. Finish reason: {finish_reason}. Response: {json.dumps(response_json, indent=2)}")
                     return None
             else:
-                # Caso não haja candidatos válidos na resposta (pode ocorrer se a segurança bloquear ou houver outro problema)
                 safety_ratings = response_json.get('promptFeedback', {}).get('safetyRatings', [])
                 if safety_ratings:
                     logger.warning(f"Gemini API response blocked due to safety. Prompt Feedback: {json.dumps(safety_ratings, indent=2)}")
@@ -99,9 +91,9 @@ async def call_gemini_api(
         logger.error(f"Unexpected error calling Gemini API: {e}", exc_info=True)
         return None
 
-# Remova a função get_embedding daqui. Ela agora está em vectorstore_utils.py
+# REMOVA ESTA FUNÇÃO SE AINDA ESTIVER AQUI. ELA PERTENCE A vectorstore_utils.py
 # async def get_embedding(...):
-#    ... (removido) ...
+#    ... (REMOVIDO) ...
 
 async def count_gemini_tokens(api_key: str, model_name: str, parts_to_count: list[dict], debug_mode: bool = False) -> int:
     """
@@ -123,7 +115,5 @@ async def count_gemini_tokens(api_key: str, model_name: str, parts_to_count: lis
             return response_json.get("totalTokens", 0)
     except Exception as e:
         logger.warning(f"Falha ao contar tokens via API: {e}. Usando contagem de caracteres como fallback (aproximado).", exc_info=True)
-        # Fallback: estimativa de tokens (geralmente 1 token para cada 4 caracteres para o inglês)
-        # Esta é uma estimativa bruta e pode não ser precisa para todos os idiomas.
         total_chars = sum(len(p.get("text", "")) for p in parts_to_count if "text" in p)
         return int(total_chars / 4)
