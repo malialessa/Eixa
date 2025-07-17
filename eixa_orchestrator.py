@@ -131,7 +131,8 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             logger.debug(f"ORCHESTRATOR | Main user document '{user_id}' already exists in '{USERS_COLLECTION}'.")
     except Exception as e:
         logger.critical(f"ORCHESTRATOR | Failed to ensure main user document in '{USERS_COLLECTION}' for '{user_id}': {e}", exc_info=True)
-        return {"status": "error", "response": f"Erro interno ao inicializar dados do usuário: {e}", "debug_info": debug_info_logs}
+        response_payload = {"status": "error", "response": f"Erro interno ao inicializar dados do usuário: {e}", "debug_info": {"orchestrator_debug_log": debug_info_logs}}
+        return {"response_payload": response_payload} # <-- CORRIGIDO AQUI
 
     # Passa o template de perfil para a função que o carrega/cria
     user_profile = await get_user_profile_data(user_id, user_profile_template_content)
@@ -204,10 +205,14 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             response_payload["response"] = "View solicitada inválida."
 
         if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"] = debug_info_logs
-        return response_payload
+        return {"response_payload": response_payload} # <-- CORRIGIDO AQUI
 
     if not user_message and not uploaded_file_data:
-        return {"status": "error", "response": "Nenhuma mensagem ou arquivo fornecido para interação."}
+        response_payload["status"] = "error"
+        response_payload["response"] = "Nenhuma mensagem ou arquivo fornecido para interação."
+        # Mantém debug_info se já houver
+        if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"] = debug_info_logs
+        return {"response_payload": response_payload} # <-- CORRIGIDO AQUI
 
     user_input_for_saving = user_message or (uploaded_file_data.get('filename') if uploaded_file_data else "Ação do sistema")
 
@@ -223,7 +228,10 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         translated_ai_response = await translate_text(user_message, "pt", source_language)
         if translated_ai_response is None:
             logger.error(f"ORCHESTRATOR | Failed to translate user message from '{source_language}' to 'pt' for user '{user_id}'. Original: '{user_message}'.", exc_info=True)
-            return {"status": "error", "response": f"Ocorreu um problema ao traduzir sua mensagem de {source_language}.", "debug_info": debug_info_logs}
+            response_payload["status"] = "error"
+            response_payload["response"] = f"Ocorreu um problema ao traduzir sua mensagem de {source_language}."
+            if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"] = debug_info_logs
+            return {"response_payload": response_payload} # <-- CORRIGIDO AQUI
         user_message_for_processing = translated_ai_response
         logger.info(f"ORCHESTRATOR | User message after translation: '{user_message_for_processing[:50]}...'.")
 
@@ -304,7 +312,8 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 "padroes_sabotagem_detectados": {}, 
             }
             await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
-            return response_payload 
+            if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"] = debug_info_logs
+            return {"response_payload": response_payload} # <-- CORRIGIDO AQUI
 
         elif any(keyword in lower_message for keyword in ["não", "nao", "cancela", "esquece", "pare", "não quero", "nao quero", "negativo", "desisto"]): # Adicionado mais opções para cancelamento
             logger.debug(f"ORCHESTRATOR | Negative confirmation keyword detected: '{lower_message}'.")
@@ -329,14 +338,16 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 "crud_result_status": "cancelled", 
             }
             await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
-            return response_payload 
+            if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"] = debug_info_logs
+            return {"response_payload": response_payload} # <-- CORRIGIDO AQUI
         else:
             # NOVO DEBUG: A mensagem é ambígua, re-promovendo.
             logger.debug(f"ORCHESTRATOR | User response '{lower_message}' in confirmation state was ambiguous. Re-prompting.")
             response_payload["response"] = stored_confirmation_message 
             response_payload["status"] = "awaiting_confirmation"
             await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
-            return response_payload 
+            if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"] = debug_info_logs
+            return {"response_payload": response_payload} # <-- CORRIGIDO AQUI
 
     # --- Normal LLM conversation flow (if no CRUD intent detected) ---
     # NOVO DEBUG: Entrando no fluxo de LLM normal
@@ -356,7 +367,8 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         response_payload["status"] = "success"
         response_payload["debug_info"] = {"intent_detected": intent_detected_in_orchestrator, "crud_result_status": "success"} 
         await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
-        return response_payload 
+        if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
+        return {"response_payload": response_payload} # <-- CORRIGIDO AQUI
 
     crud_intent_data = await _extract_crud_intent_with_llm(user_id, user_message_for_processing, full_history, gemini_api_key, gemini_text_model)
     intent_detected_in_orchestrator = crud_intent_data.get("intent_detected", "conversa")
@@ -375,7 +387,8 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 response_payload["response"] = "Não consegui extrair todos os detalhes necessários para a tarefa (descrição e data). Por favor, seja mais específico."
                 response_payload["status"] = "error"
                 await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
-                return response_payload
+                if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
+                return {"response_payload": response_payload} # <-- CORRIGIDO AQUI
 
             corrected_task_date = task_date 
             if task_date:
@@ -432,7 +445,8 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 response_payload["response"] = "Não consegui extrair o nome do projeto. Por favor, seja mais específico."
                 response_payload["status"] = "error"
                 await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
-                return response_payload
+                if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
+                return {"response_payload": response_payload} # <-- CORRIGIDO AQUI
 
             provisional_payload = {
                 "item_type": "project",
@@ -472,7 +486,8 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             "provisional_payload": provisional_payload,
         }
         await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
-        return response_payload
+        if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
+        return {"response_payload": response_payload} # <-- CORRIGIDO AQUI
 
     # --- Normal LLM conversation flow (if no CRUD intent detected) ---
     logger.debug(f"ORCHESTRATOR | Not in confirmation state or confirmation handled. Proceeding with LLM inference.")
@@ -775,5 +790,4 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         response_payload["debug_info"]["generated_nudge"] = 'true' if nudge_message else 'false'
         response_payload["debug_info"]["system_instruction_snippet"] = final_system_instruction[:500] + "..."
 
-
-    return response_payload
+    return {"response_payload": response_payload} # <-- CORRIGIDO AQUI (Último retorno da função)
