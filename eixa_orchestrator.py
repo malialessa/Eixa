@@ -20,7 +20,7 @@ from vectorstore_utils import get_embedding, add_memory_to_vectorstore, get_rele
 
 # Importações de firestore_utils para operar com o Firestore
 from firestore_utils import get_user_profile_data, get_firestore_document_data, set_firestore_document, save_interaction
-from google.cloud import firestore
+from google.cloud import firestore # Importar firestore aqui para usar firestore.DELETE_FIELD
 
 from nudger import analyze_for_nudges
 from user_behavior import track_repetition 
@@ -290,16 +290,18 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 response_payload["status"] = "error"
                 logger.error(f"ORCHESTRATOR | User '{user_id}' confirmed action, but CRUD failed: {crud_response}")
 
+            # --- CORREÇÃO: Limpeza explícita do estado de confirmação ---
             try:
-                await set_firestore_document(
-                    'profiles',
-                    user_id,
-                    {'user_profile.eixa_state': {}}, 
-                    merge=True 
-                )
-                logger.info(f"ORCHESTRATOR | Confirmation state cleared for user '{user_id}'.")
+                user_profile_ref = firestore.client().collection('eixa_profiles').document(user_id)
+                await asyncio.to_thread(user_profile_ref.update({
+                    'user_profile.eixa_state.awaiting_confirmation': firestore.DELETE_FIELD,
+                    'user_profile.eixa_state.confirmation_payload_cache': firestore.DELETE_FIELD,
+                    'user_profile.eixa_state.confirmation_message': firestore.DELETE_FIELD
+                }))
+                logger.info(f"ORCHESTRATOR | Confirmation state explicitly cleared for user '{user_id}'.")
             except Exception as e:
-                logger.error(f"ORCHESTRATOR | Failed to clear confirmation state for user '{user_id}': {e}", exc_info=True)
+                logger.error(f"ORCHESTRATOR | Failed to explicitly clear confirmation state for user '{user_id}': {e}", exc_info=True)
+            # --- FIM DA CORREÇÃO ---
 
             response_payload["response"] = final_ai_response
             response_payload["debug_info"] = {
@@ -319,16 +321,18 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             logger.debug(f"ORCHESTRATOR | Negative confirmation keyword detected: '{lower_message}'.")
             final_ai_response = "Ok, entendi. Ação cancelada."
             response_payload["status"] = "success" 
+            # --- CORREÇÃO: Limpeza explícita do estado de confirmação ---
             try:
-                await set_firestore_document(
-                    'profiles',
-                    user_id,
-                    {'user_profile.eixa_state': {}}, 
-                    merge=True
-                )
-                logger.info(f"ORCHESTRATOR | Confirmation state cleared for user '{user_id}'.")
+                user_profile_ref = firestore.client().collection('eixa_profiles').document(user_id)
+                await asyncio.to_thread(user_profile_ref.update({
+                    'user_profile.eixa_state.awaiting_confirmation': firestore.DELETE_FIELD,
+                    'user_profile.eixa_state.confirmation_payload_cache': firestore.DELETE_FIELD,
+                    'user_profile.eixa_state.confirmation_message': firestore.DELETE_FIELD
+                }))
+                logger.info(f"ORCHESTRATOR | Confirmation state explicitly cleared (rejection) for user '{user_id}'.")
             except Exception as e:
-                logger.error(f"ORCHESTRATOR | Failed to clear confirmation state (rejection) for user '{user_id}': {e}", exc_info=True)
+                logger.error(f"ORCHESTRATOR | Failed to explicitly clear confirmation state (rejection) for user '{user_id}': {e}", exc_info=True)
+            # --- FIM DA CORREÇÃO ---
 
             response_payload["response"] = final_ai_response + " Como posso ajudar de outra forma?"
             response_payload["debug_info"] = {
@@ -349,8 +353,25 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"] = debug_info_logs
             return {"response_payload": response_payload} # <-- CORRIGIDO AQUI
 
-    # --- Normal LLM conversation flow (if no CRUD intent detected) ---
-    # NOVO DEBUG: Entrando no fluxo de LLM normal
+    # --- CORREÇÃO: Controle da Chamada ao LLM para extrair intenções CRUD ---
+    # APENAS chame o extrator de intenções LLM se NÃO estivermos em um estado de confirmação pendente
+    crud_intent_data = {"intent_detected": "none"} # Default para evitar erro
+    intent_detected_in_orchestrator = "conversa" # Default
+
+    if not is_in_confirmation_state: # <--- NOVA CONDIÇÃO AQUI
+        crud_intent_data = await _extract_crud_intent_with_llm(user_id, user_message_for_processing, full_history, gemini_api_key, gemini_text_model)
+        intent_detected_in_orchestrator = crud_intent_data.get("intent_detected", "conversa")
+        logger.debug(f"ORCHESTRATOR | LLM intent extraction result: {intent_detected_in_orchestrator}")
+    else:
+        # Se is_in_confirmation_state é True, já sabemos que a intenção original veio de um CRUD.
+        # Não precisamos re-extrair, pois a lógica de confirmação já está lidando com isso no bloco acima.
+        # Definimos uma intenção que não vai entrar nos blocos de CRUD abaixo.
+        intent_detected_in_orchestrator = "already_in_confirmation_flow"
+        logger.debug(f"ORCHESTRATOR | Skipping LLM intent extraction because already in confirmation state.")
+    # --- FIM DA CORREÇÃO ---
+
+
+    # --- Restante do fluxo normal (só será executado se não estiver em confirmação E não for CRUD direto) ---
     logger.debug(f"ORCHESTRATOR | Not in confirmation state or confirmation handled. Proceeding with LLM inference.")
 
     input_parser_results = await asyncio.to_thread(parse_incoming_input, user_message_for_processing, uploaded_file_data)
@@ -362,7 +383,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
     if profile_settings_results.get("profile_updated"):
         direct_action_message = profile_settings_results['action_message']
         user_profile = await get_user_profile_data(user_id, user_profile_template_content) 
-        intent_detected_in_orchestrator = "configuracao_perfil"
+        intent_detected_in_orchestrator = "configuracao_perfil" # SOBRESCRITO se a configuração foi a ação principal
         response_payload["response"] = direct_action_message
         response_payload["status"] = "success"
         response_payload["debug_info"] = {"intent_detected": intent_detected_in_orchestrator, "crud_result_status": "success"} 
@@ -370,9 +391,8 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
         return {"response_payload": response_payload} # <-- CORRIGIDO AQUI
 
-    crud_intent_data = await _extract_crud_intent_with_llm(user_id, user_message_for_processing, full_history, gemini_api_key, gemini_text_model)
-    intent_detected_in_orchestrator = crud_intent_data.get("intent_detected", "conversa")
-
+    # Este bloco só será ativado se 'intent_detected_in_orchestrator' for "task" ou "project",
+    # o que só acontece se não estivéssemos em estado de confirmação antes.
     if intent_detected_in_orchestrator in ["task", "project"]:
         item_type = crud_intent_data['intent_detected']
         action = crud_intent_data['action']
@@ -393,22 +413,15 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             corrected_task_date = task_date 
             if task_date:
                 try:
-                    parsed_date_from_llm = datetime.strptime(task_date, "%Y-%m-%d").date()
-                    current_utc_date = datetime.now(timezone.utc).date()
-
-                    if parsed_date_from_llm.year < current_utc_date.year:
-                        parsed_date_from_llm = parsed_date_from_llm.replace(year=current_utc_date.year)
-                        logger.info(f"ORCHESTRATOR | LLM inferred past year. Corrected task date from original {task_date} to current year: {parsed_date_from_llm.isoformat()}.")
-                    
-                    if parsed_date_from_llm < current_utc_date:
-                        parsed_date_from_llm = parsed_date_from_llm.replace(year=current_utc_date.year + 1)
-                        logger.info(f"ORCHESTRATOR | Corrected task date was still in the past. Adjusted to next year: {parsed_date_from_llm.isoformat()}.")
-                    
-                    corrected_task_date = parsed_date_from_llm.isoformat()
-                    logger.info(f"ORCHESTRATOR | Final corrected task date (ISO) used for payload: {corrected_task_date}")
-
-                except ValueError as ve:
-                    logger.warning(f"ORCHESTRATOR | Task date '{task_date}' from LLM could not be parsed for year correction ({ve}). Using original from LLM as fallback.", exc_info=True)
+                    local_tz = pytz.timezone(user_profile.get('timezone', DEFAULT_TIMEZONE))
+                    parsed_date_for_display = local_tz.localize(datetime.fromisoformat(corrected_task_date))
+                    formatted_date = parsed_date_for_display.strftime("%d de %B de %Y")
+                    confirmation_message = f"Confirma que deseja adicionar a tarefa '{task_description}' para {formatted_date}?"
+                except ValueError as ve_display:
+                    logger.warning(f"ORCHESTRATOR | Error formatting corrected_task_date '{corrected_task_date}' for display: {ve_display}. Using raw date.", exc_info=True)
+                    confirmation_message = f"Confirma que deseja adicionar a tarefa '{task_description}' para a data especificada ({corrected_task_date})?"
+            else: 
+                 confirmation_message = f"Confirma que deseja adicionar a tarefa '{task_description}'?"
             completed_status = True if action == 'complete' else (item_details.get('status') == 'completed' if 'status' in item_details else None)
             
             provisional_payload_data = {"description": task_description, "date": corrected_task_date} 
@@ -489,8 +502,8 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
         return {"response_payload": response_payload} # <-- CORRIGIDO AQUI
 
-    # --- Normal LLM conversation flow (if no CRUD intent detected) ---
-    logger.debug(f"ORCHESTRATOR | Not in confirmation state or confirmation handled. Proceeding with LLM inference.")
+    # --- Normal LLM conversation flow (final fallback if no specific intent handled) ---
+    logger.debug(f"ORCHESTRATOR | Not in confirmation state or specific intent handled. Proceeding with LLM inference.")
     conversation_history = []
     for turn in full_history:
         if turn.get("input"):
@@ -790,4 +803,4 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         response_payload["debug_info"]["generated_nudge"] = 'true' if nudge_message else 'false'
         response_payload["debug_info"]["system_instruction_snippet"] = final_system_instruction[:500] + "..."
 
-    return {"response_payload": response_payload} # <-- CORRIGIDO AQUI (Último retorno da função)
+    return {"response_payload": response_payload} # <-- CORRIGIDO AQUI (Último retorno da função)]
