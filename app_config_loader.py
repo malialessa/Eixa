@@ -42,7 +42,8 @@ def get_eixa_templates():
         _prompt_config_data = load_yaml_config('prompt_config.yaml', {}, "prompt config")
         _config_cache["eixa_persona_template_text"] = _prompt_config_data.get('base_eixa_persona', '')
 
-        _user_profile_template_full = load_yaml_config('user_profile_template.yaml', {}, "user profile template")
+        # ATENÇÃO AQUI: Mudando para 'minimal_user_profile_template.yaml'
+        _user_profile_template_full = load_yaml_config('minimal_user_profile_template.yaml', {}, "minimal user profile template")
         _config_cache["user_profile_template_content"] = _user_profile_template_full.get('user_profile', {})
 
         _user_flags_template_full = load_yaml_config('user_flags.yaml', {}, "user flags template")

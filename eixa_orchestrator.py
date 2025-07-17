@@ -1,4 +1,3 @@
-# eixa_orchestrator.py
 import logging
 import asyncio
 from datetime import date, datetime, timezone, timedelta
@@ -15,8 +14,6 @@ from memory_utils import (
 from task_manager import parse_and_update_agenda_items, parse_and_update_project_items 
 from eixa_data import get_all_daily_tasks, save_daily_tasks_data, get_project_data, save_project_data, get_user_history, get_all_projects 
 
-# IMPORTAÇÃO CORRIGIDA: call_gemini_api vem de vertex_utils.
-# get_embedding, add_memory_to_vectorstore e get_relevant_memories vêm de vectorstore_utils.
 from vertex_utils import call_gemini_api 
 from vectorstore_utils import get_embedding, add_memory_to_vectorstore, get_relevant_memories 
 
@@ -35,7 +32,7 @@ import pytz
 from config import DEFAULT_MAX_OUTPUT_TOKENS, DEFAULT_TEMPERATURE, DEFAULT_TIMEZONE, USERS_COLLECTION, TOP_LEVEL_COLLECTIONS_MAP, GEMINI_VISION_MODEL, GEMINI_TEXT_MODEL, EMBEDDING_MODEL_NAME 
 
 from input_parser import parse_incoming_input
-from app_config_loader import get_eixa_templates
+from app_config_loader import get_eixa_templates # Importa o carregador de templates
 from crud_orchestrator import orchestrate_crud_action
 from profile_settings_manager import parse_and_update_profile_settings, update_profile_from_inferred_data
 
@@ -75,7 +72,6 @@ async def _extract_crud_intent_with_llm(user_id: str, user_message: str, history
     """
 
     llm_history = []
-    # Limita o histórico para evitar estourar o contexto do LLM
     for turn in history[-5:]: 
         if turn.get("input"):
             llm_history.append({"role": "user", "parts": [{"text": turn.get("input")}]})
@@ -116,6 +112,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                                      debug_mode: bool = False) -> Dict[str, Any]:
     
     # Carrega os templates via o novo módulo centralizado
+    # user_profile_template_content aqui usará o "minimal"
     base_eixa_persona_template_text, user_profile_template_content, user_flags_template_content = get_eixa_templates()
 
     debug_info_logs = []
@@ -138,7 +135,9 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
 
     # Passa o template de perfil para a função que o carrega/cria
     user_profile = await get_user_profile_data(user_id, user_profile_template_content)
-    user_display_name = user_profile.get('name') if user_profile.get('name') else f"Usuário {user_id[:4]}..."
+    # NOVO: Se o perfil é novo e ainda não tem nome, usa "Novo Usuário EIXA" para as primeiras interações.
+    # Se o template minimalista não tiver 'name' inicial, ele começará como user_id.
+    user_display_name = user_profile.get('name') if user_profile.get('name') else f"Novo Usuário EIXA" # Fallback mais amigável
     logger.debug(f"ORCHESTRATOR | User profile loaded for '{user_id}'. Display name: '{user_display_name}'. Profile content keys: {list(user_profile.keys())}")
 
     eixa_state = user_profile.get('eixa_state', {})
@@ -148,7 +147,6 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
 
     # Correct definition and usage of user_flags_data
     user_flags_data_raw = await get_firestore_document_data('flags', user_id)
-    # Usa user_flags_template_content para inicializar se não existir
     user_flags_data = user_flags_data_raw.get("behavior_flags", user_flags_template_content) if user_flags_data_raw else user_flags_template_content
 
     # Se o documento de flags não existia, salva o template default
@@ -247,8 +245,18 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 {"user_id": user_id, "item_type": item_type, "action": action, "item_id": item_id, "data": data}
             )
 
+            # Aprimoramento da mensagem final APÓS A CONFIRMAÇÃO DO CRUD
             if crud_response.get("status") == "success":
                 final_ai_response = crud_response.get("message", "Ação concluída com sucesso.")
+                # Adicionar uma frase de encorajamento ou próxima pergunta após a confirmação bem-sucedida
+                if action == "create":
+                    final_ai_response += " Como posso te ajudar a dar os primeiros passos?"
+                elif action == "update" and data.get("completed"):
+                    final_ai_response += " Que ótimo! Qual o próximo passo ou tarefa em que você quer focar?"
+                elif action == "delete":
+                    final_ai_response += " O que mais podemos otimizar ou organizar?"
+                else:
+                    final_ai_response += " O que mais posso fazer por você?"
                 response_payload["status"] = "success"
                 logger.info(f"ORCHESTRATOR | User '{user_id}' confirmed action. CRUD executed successfully.")
             elif crud_response.get("status") == "duplicate":
@@ -323,7 +331,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
     profile_settings_results = await parse_and_update_profile_settings(user_id, user_message_for_processing, user_profile_template_content)
     if profile_settings_results.get("profile_updated"):
         direct_action_message = profile_settings_results['action_message']
-        user_profile = await get_user_profile_data(user_id, user_profile_template_content)
+        user_profile = await get_user_profile_data(user_id, user_profile_template_content) # Recarrega para ter certeza de que está atualizado
         intent_detected_in_orchestrator = "configuracao_perfil"
         response_payload["response"] = direct_action_message
         response_payload["status"] = "success"
@@ -521,54 +529,68 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
     contexto_perfil_str = f"--- CONTEXTO DO PERFIL DO USUÁRIO ({user_display_name}):\n"
     profile_summary_parts = []
 
-    if user_profile.get('goals', {}) and isinstance(user_profile['goals'], dict):
-        if user_profile['goals'].get('long_term'):
-            goals_text = [g.get('value', 'N/A') for g in user_profile['goals']['long_term'] if isinstance(g, dict)]
-            if goals_text: profile_summary_parts.append(f"  - Metas de Longo Prazo: {', '.join(goals_text)}")
-        if user_profile['goals'].get('medium_term'):
-            goals_text = [g.get('value', 'N/A') for g in user_profile['goals']['medium_term'] if isinstance(g, dict)]
-            if goals_text: profile_summary_parts.append(f"  - Metas de Médio Prazo: {', '.join(goals_text)}")
-        if user_profile['goals'].get('short_term'):
-            goals_text = [g.get('value', 'N/A') for g in user_profile['goals']['short_term'] if isinstance(g, dict)]
-            if goals_text: profile_summary_parts.append(f"  - Metas de Curto Prazo: {', '.join(goals_text)}")
-
+    # Aqui é a diferença do perfil minimal: as chaves podem estar vazias
     if user_profile.get('psychological_profile'):
         psych = user_profile['psychological_profile']
-        if psych.get('personality_traits'): profile_summary_parts.append(f"  - Traços de Personalidade: {', '.join(psych['personality_traits'])}")
-        if psych.get('diagnoses_and_conditions'): profile_summary_parts.append(f"  - Condições/Diagnósticos: {', '.join(psych['diagnoses_and_conditions'])}")
-        if psych.get('historical_behavioral_patterns'): profile_summary_parts.append(f"  - Padrões Comportamentais Históricos: {', '.join(psych['historical_behavioral_patterns'])}")
-        if psych.get('coping_mechanisms'): profile_summary_parts.append(f"  - Mecanismos de Coping: {', '.join(psych['coping_mechanisms'])}")
+        # Verifica se as listas existem e não estão vazias antes de tentar join
+        if psych.get('personality_traits') and isinstance(psych['personality_traits'], list) and psych['personality_traits']: profile_summary_parts.append(f"  - Traços de Personalidade: {', '.join(psych['personality_traits'])}")
+        if psych.get('diagnoses_and_conditions') and isinstance(psych['diagnoses_and_conditions'], list) and psych['diagnoses_and_conditions']: profile_summary_parts.append(f"  - Condições/Diagnósticos: {', '.join(psych['diagnoses_and_conditions'])}")
+        if psych.get('historical_behavioral_patterns') and isinstance(psych['historical_behavioral_patterns'], list) and psych['historical_behavioral_patterns']: profile_summary_parts.append(f"  - Padrões Comportamentais Históricos: {', '.join(psych['historical_behavioral_patterns'])}")
+        if psych.get('coping_mechanisms') and isinstance(psych['coping_mechanisms'], list) and psych['coping_mechanisms']: profile_summary_parts.append(f"  - Mecanismos de Coping: {', '.join(psych['coping_mechanisms'])}")
 
-    if user_profile.get('cognitive_style'):
+    if user_profile.get('cognitive_style') and isinstance(user_profile['cognitive_style'], list) and user_profile['cognitive_style']:
         profile_summary_parts.append(f"  - Estilo Cognitivo: {', '.join(user_profile['cognitive_style'])}")
 
     if user_profile.get('communication_preferences'):
         comm_pref = user_profile['communication_preferences']
-        profile_summary_parts.append(f"  - Preferências de Comunicação (Tom): {comm_pref.get('tone_preference', 'N/A')}")
-        profile_summary_parts.append(f"  - Preferências de Comunicação (Estilo de Intervenção): {comm_pref.get('intervention_style', 'N/A')}")
-        if comm_pref.get('specific_no_gos'): profile_summary_parts.append(f"  - Regras Específicas para EIXA (NÃO FAZER): {'; '.join(comm_pref['specific_no_gos'])}")
+        # Verifica se as chaves existem no dicionário antes de tentar acessá-las
+        if comm_pref.get('tone_preference'): profile_summary_parts.append(f"  - Preferências de Comunicação (Tom): {comm_pref['tone_preference']}")
+        if comm_pref.get('intervention_style'): profile_summary_parts.append(f"  - Preferências de Comunicação (Estilo de Intervenção): {comm_pref['intervention_style']}")
+        if comm_pref.get('specific_no_gos') and isinstance(comm_pref['specific_no_gos'], list) and comm_pref['specific_no_gos']: profile_summary_parts.append(f"  - Regras Específicas para EIXA (NÃO FAZER): {'; '.join(comm_pref['specific_no_gos'])}")
 
-    if user_profile.get('current_projects'):
+    if user_profile.get('current_projects') and isinstance(user_profile['current_projects'], list) and user_profile['current_projects']:
         project_names = [p.get('name', 'N/A') for p in user_profile['current_projects']]
-        profile_summary_parts.append(f"  - Projetos Atuais: {', '.join(project_names)}")
+        if project_names: profile_summary_parts.append(f"  - Projetos Atuais: {', '.join(project_names)}")
 
-    if user_profile.get('eixa_interaction_preferences', {}).get('expected_eixa_actions'):
+    if user_profile.get('goals', {}) and isinstance(user_profile['goals'], dict):
+        if user_profile['goals'].get('long_term') and isinstance(user_profile['goals']['long_term'], list) and user_profile['goals']['long_term']:
+            goals_text = [g.get('value', 'N/A') for g in user_profile['goals']['long_term'] if isinstance(g, dict)]
+            if goals_text: profile_summary_parts.append(f"  - Metas de Longo Prazo: {', '.join(goals_text)}")
+        if user_profile['goals'].get('medium_term') and isinstance(user_profile['goals']['medium_term'], list) and user_profile['goals']['medium_term']:
+            goals_text = [g.get('value', 'N/A') for g in user_profile['goals']['medium_term'] if isinstance(g, dict)]
+            if goals_text: profile_summary_parts.append(f"  - Metas de Médio Prazo: {', '.join(goals_text)}")
+        if user_profile['goals'].get('short_term') and isinstance(user_profile['goals']['short_term'], list) and user_profile['goals']['short_term']:
+            goals_text = [g.get('value', 'N/A') for g in user_profile['goals']['short_term'] if isinstance(g, dict)]
+            if goals_text: profile_summary_parts.append(f"  - Metas de Curto Prazo: {', '.join(goals_text)}")
+
+    if user_profile.get('eixa_interaction_preferences', {}).get('expected_eixa_actions') and isinstance(user_profile['eixa_interaction_preferences']['expected_eixa_actions'], list) and user_profile['eixa_interaction_preferences']['expected_eixa_actions']:
         actions_text = user_profile['eixa_interaction_preferences']['expected_eixa_actions']
         profile_summary_parts.append(f"  - Ações Esperadas da EIXA: {', '.join(actions_text)}")
+    
+    if user_profile.get('daily_routine_elements'):
+        daily_routine = user_profile['daily_routine_elements']
+        daily_routine_list = []
+        if daily_routine.get('sleep_schedule'): daily_routine_list.append(f"Horário de Sono: {daily_routine['sleep_schedule']}")
+        if daily_routine.get('exercise_routine'): daily_routine_list.append(f"Rotina de Exercícios: {daily_routine['exercise_routine']}")
+        if daily_routine.get('dietary_preferences'): daily_routine_list.append(f"Preferências Alimentares: {daily_routine['dietary_preferences']}")
+        if daily_routine.get('hydration_goals'): daily_routine_list.append(f"Metas de Hidratação: {daily_routine['hydration_goals']}")
+        if daily_routine.get('supplements') and isinstance(daily_routine['supplements'], list) and daily_routine['supplements']:
+            supps = [f"{s.get('name', 'N/A')} ({s.get('purpose', 'N/A')})" for s in daily_routine['supplements'] if isinstance(s, dict)]
+            if supps: daily_routine_list.append(f"Suplementos: {', '.join(supps)}")
 
-    if user_profile.get('daily_routine_elements', {}).get('alerts_and_reminders'):
-        alerts_rem = user_profile['daily_routine_elements']['alerts_and_reminders']
-        alerts_list = []
-        if alerts_rem.get('hydration'): alerts_list.append(f"Hidratação: {alerts_rem['hydration']}")
-        if alerts_rem.get('eye_strain'): alerts_list.append(f"Fadiga Visual: {alerts_rem['eye_strain']}")
-        if alerts_rem.get('mobility'): alerts_list.append(f"Mobilidade: {alerts_rem['mobility']}")
-        if alerts_rem.get('mindfulness'): alerts_list.append(f"Mindfulness: {alerts_rem['mindfulness']}")
-        if alerts_rem.get('meal_times'): alerts_list.append(f"Horário das Refeições: {alerts_rem['meal_times']}")
-        if alerts_rem.get('medication_reminders'): alerts_list.append(f"Lembretes de Medicação: {', '.join(alerts_rem['medication_reminders'])}")
-        if alerts_rem.get('overwhelm_triggers'): alerts_list.append(f"Gatilhos de Sobrecarga: {', '.join(alerts_rem['overwhelm_triggers'])}")
-        if alerts_rem.get('burnout_indicators'): alerts_list.append(f"Indicadores de Burnout: {', '.join(alerts_rem['burnout_indicators'])}")
+        if daily_routine.get('alerts_and_reminders'):
+            alerts_rem = daily_routine['alerts_and_reminders']
+            if alerts_rem.get('hydration'): daily_routine_list.append(f"Alerta Hidratação: {alerts_rem['hydration']}")
+            if alerts_rem.get('eye_strain'): daily_routine_list.append(f"Alerta Fadiga Visual: {alerts_rem['eye_strain']}")
+            if alerts_rem.get('mobility'): daily_routine_list.append(f"Alerta Mobilidade: {alerts_rem['mobility']}")
+            if alerts_rem.get('mindfulness'): daily_routine_list.append(f"Alerta Mindfulness: {alerts_rem['mindfulness']}")
+            if alerts_rem.get('meal_times'): daily_routine_list.append(f"Alerta Refeições: {alerts_rem['meal_times']}")
+            if alerts_rem.get('medication_reminders') and isinstance(alerts_rem['medication_reminders'], list) and alerts_rem['medication_reminders']: daily_routine_list.append(f"Alerta Medicação: {', '.join(alerts_rem['medication_reminders'])}")
+            if alerts_rem.get('overwhelm_triggers') and isinstance(alerts_rem['overwhelm_triggers'], list) and alerts_rem['overwhelm_triggers']: daily_routine_list.append(f"Gatilhos Sobrecarga: {', '.join(alerts_rem['overwhelm_triggers'])}")
+            if alerts_rem.get('burnout_indicators') and isinstance(alerts_rem['burnout_indicators'], list) and alerts_rem['burnout_indicators']: daily_routine_list.append(f"Indicadores Burnout: {', '.join(alerts_rem['burnout_indicators'])}")
         
-        if alerts_list: profile_summary_parts.append(f"  - Alertas de Rotina: {'; '.join(alerts_list)}")
+        if daily_routine_list: profile_summary_parts.append(f"  - Elementos da Rotina Diária: {'; '.join(daily_routine_list)}")
+
 
     contexto_perfil_str += "\n".join(profile_summary_parts) if profile_summary_parts else "  Nenhum dado de perfil detalhado disponível.\n"
     contexto_perfil_str += "--- FIM DO CONTEXTO DE PERFIL ---\n\n"
@@ -602,7 +624,12 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 profile_update_data = json.loads(profile_update_json_str)
                 profile_update_json = profile_update_data.get('profile_update')
 
-                final_ai_response = re.sub(r'```json.*?```', '', final_ai_response, flags=re.DOTALL).strip()
+                # CORREÇÃO ROBUSTA para remover o JSON da resposta
+                pre_json_text = final_ai_response[:json_match.start()].strip()
+                post_json_text = final_ai_response[json_match.end():].strip()
+                final_ai_response = (pre_json_text + "\n\n" + post_json_text).strip()
+                final_ai_response = final_ai_response.replace('\n\n\n', '\n\n') # Limpa quebras de linha triplas
+                
                 logger.info(f"ORCHESTRATOR | Detected profile_update JSON from LLM for user '{user_id}'.")
             except json.JSONDecodeError as e:
                 logger.warning(f"ORCHESTRATOR | Failed to parse profile_update JSON from LLM: {e}. Raw JSON: {json_match.group(1)[:100]}...", exc_info=True)
