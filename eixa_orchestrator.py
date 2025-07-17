@@ -12,11 +12,17 @@ from memory_utils import (
     get_emotional_memories,
     get_sabotage_patterns,
 )
-from task_manager import parse_and_update_agenda_items, parse_and_update_project_items # Essas funções não serão mais chamadas diretamente para CRUD do LLM
+# parse_and_update_agenda_items e parse_and_update_project_items não serão mais chamadas diretamente para CRUD do LLM
+# Mas manter o import se forem usadas em outros contextos (ex: teste, ou como fallback)
+from task_manager import parse_and_update_agenda_items, parse_and_update_project_items 
 from eixa_data import get_all_daily_tasks, save_daily_tasks_data, get_project_data, save_project_data, get_user_history, get_all_projects 
 
-from vertex_utils import call_gemini_api, get_embedding # get_embedding aqui
-from vectorstore_utils import add_memory_to_vectorstore, get_relevant_memories # add_memory_to_vectorstore e get_relevant_memories aqui
+# AQUI ESTÁ A CORREÇÃO:
+# Remova get_embedding do import de vertex_utils.py
+from vertex_utils import call_gemini_api # Apenas call_gemini_api aqui
+
+# get_embedding, add_memory_to_vectorstore e get_relevant_memories devem vir de vectorstore_utils
+from vectorstore_utils import get_embedding, add_memory_to_vectorstore, get_relevant_memories 
 
 # Importações de firestore_utils para operar com o Firestore
 from firestore_utils import get_user_profile_data, get_firestore_document_data, set_firestore_document, save_interaction
@@ -28,10 +34,9 @@ from personal_checkpoint import get_latest_self_eval
 from translation_utils import detect_language, translate_text
 
 import os
-# Remova o 'import yaml' pois o carregamento será feito por app_config_loader
 import pytz
 
-from config import DEFAULT_MAX_OUTPUT_TOKENS, DEFAULT_TEMPERATURE, DEFAULT_TIMEZONE, USERS_COLLECTION, TOP_LEVEL_COLLECTIONS_MAP, GEMINI_VISION_MODEL, GEMINI_TEXT_MODEL 
+from config import DEFAULT_MAX_OUTPUT_TOKENS, DEFAULT_TEMPERATURE, DEFAULT_TIMEZONE, USERS_COLLECTION, TOP_LEVEL_COLLECTIONS_MAP, GEMINI_VISION_MODEL, GEMINI_TEXT_MODEL, EMBEDDING_MODEL_NAME # Importe EMBEDDING_MODEL_NAME
 
 # CORREÇÃO CRÍTICA AQUI: Importar parse_incoming_input
 from input_parser import parse_incoming_input
@@ -45,24 +50,6 @@ from crud_orchestrator import orchestrate_crud_action
 from profile_settings_manager import parse_and_update_profile_settings, update_profile_from_inferred_data
 
 logger = logging.getLogger(__name__)
-
-# Remova estas variáveis globais e a função _initialize_templates
-# _base_eixa_persona_template_text = None
-# _user_profile_template_content = None
-# _user_flags_template_content = None
-
-# Remova _initialize_templates, pois get_eixa_templates fará isso
-# def _initialize_templates():
-#     global _base_eixa_persona_template_text, _user_profile_template_content, _user_flags_template_content
-#     if _base_eixa_persona_template_text is None:
-#         _prompt_config_data = _load_yaml_config('prompt_config.yaml', {}, "prompt config")
-#         _base_eixa_persona_template_text = _prompt_config_data.get('base_eixa_persona', '')
-
-#         _user_profile_template_full = _load_yaml_config('minimal_user_profile_template.yaml', {}, "minimal user profile template")
-#         _user_profile_template_content = _user_profile_template_full.get('user_profile', {})
-
-#         _user_flags_template_full = _load_yaml_config('user_flags.yaml', {}, "user flags template")
-#         _user_flags_template_content = _user_flags_template_full.get('behavior_flags', {})
 
 async def _extract_crud_intent_with_llm(user_id: str, user_message: str, history: list, gemini_api_key: str, gemini_text_model: str) -> dict | None:
     system_instruction_for_crud_extraction = """
@@ -435,7 +422,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 "data": provisional_payload_data
             }
 
-            # --- MODIFICAÇÃO CHAVE: SEMPRE CONSTRUA A confirmation_message COM A DATA CORRIGIDA ---
+            # --- MODIFICAÇÃO CHAVE: SEMPRE CONSTRUIR A confirmation_message COM A DATA CORRIGIDA ---
             # Isso garante que a data na pergunta de confirmação esteja sempre correta
             if action == 'create':
                 if corrected_task_date:
@@ -536,7 +523,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
     # --- Memória Vetorial (Contextualização de Longo prazo) ---
     if user_message_for_processing and gcp_project_id and region:
         # Passar explicitamente o modelo para get_embedding
-        user_query_embedding = await get_embedding(user_message_for_processing, gcp_project_id, region, model_name=GEMINI_TEXT_MODEL)
+        user_query_embedding = await get_embedding(user_message_for_processing, gcp_project_id, region, model_name=EMBEDDING_MODEL_NAME) # Usar EMBEDDING_MODEL_NAME
         if user_query_embedding:
             relevant_memories = await get_relevant_memories(user_id, user_query_embedding, n_results=5) 
             if relevant_memories:
@@ -570,7 +557,11 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
     if current_projects:
         contexto_critico += "Projetos Ativos:\n"
         for proj in current_projects:
-            contexto_critico += f"- {proj.get('name', 'N/A')} (Status: {proj.get('progress_tags', 'N/A')})\n"
+            # Correção para usar 'name' e 'status' que são os campos esperados do project_schema.yaml
+            # Certifique-se de que get_all_projects retorna a estrutura correta.
+            proj_name = proj.get('name', 'N/A')
+            proj_status = proj.get('status', 'N/A') # Ou 'progress_tags' dependendo do que quer mostrar
+            contexto_critico += f"- {proj_name} (Status: {proj_status})\n"
     else:
         contexto_critico += "Nenhum projeto ativo registrado.\n"
     contexto_critico += "--- FIM DO CONTEXTO CRÍTICO ---\n\n"
@@ -630,6 +621,12 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         if alerts_rem.get('hydration'): alerts_list.append(f"Hidratação: {alerts_rem['hydration']}")
         if alerts_rem.get('eye_strain'): alerts_list.append(f"Fadiga Visual: {alerts_rem['eye_strain']}")
         if alerts_rem.get('mobility'): alerts_list.append(f"Mobilidade: {alerts_rem['mobility']}")
+        if alerts_rem.get('mindfulness'): alerts_list.append(f"Mindfulness: {alerts_rem['mindfulness']}")
+        if alerts_rem.get('meal_times'): alerts_list.append(f"Horário das Refeições: {alerts_rem['meal_times']}")
+        if alerts_rem.get('medication_reminders'): alerts_list.append(f"Lembretes de Medicação: {', '.join(alerts_rem['medication_reminders'])}")
+        if alerts_rem.get('overwhelm_triggers'): alerts_list.append(f"Gatilhos de Sobrecarga: {', '.join(alerts_rem['overwhelm_triggers'])}")
+        if alerts_rem.get('burnout_indicators'): alerts_list.append(f"Indicadores de Burnout: {', '.join(alerts_rem['burnout_indicators'])}")
+        
         if alerts_list: profile_summary_parts.append(f"  - Alertas de Rotina: {'; '.join(alerts_list)}")
 
     contexto_perfil_str += "\n".join(profile_summary_parts) if profile_summary_parts else "  Nenhum dado de perfil detalhado disponível.\n"
@@ -709,7 +706,8 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         text_for_embedding = f"User: {user_message_for_processing}\nAI: {final_ai_response}"
         # Usar o modelo de embedding definido no config.py para texto (text-embedding-004)
         # O parâmetro model_name é crucial para especificar o modelo para embeddings
-        interaction_embedding = await get_embedding(text_for_embedding, gcp_project_id, region, model_name=GEMINI_TEXT_MODEL) # Passar o modelo explicitamente
+        # AQUI ESTÁ A CHAVE: model_name=EMBEDDING_MODEL_NAME
+        interaction_embedding = await get_embedding(text_for_embedding, gcp_project_id, region, model_name=EMBEDDING_MODEL_NAME) 
         if interaction_embedding:
             current_utc_timestamp = datetime.now(timezone.utc).isoformat().replace(":", "-").replace(".", "_")
             await add_memory_to_vectorstore(

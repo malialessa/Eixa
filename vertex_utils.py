@@ -4,6 +4,9 @@ import httpx
 import json
 import logging
 
+# NÃO IMPORTE get_embedding AQUI. Essa função foi movida para vectorstore_utils.py
+# Remova: from vertexai.language_models import TextEmbeddingModel 
+
 logger = logging.getLogger(__name__)
 
 async def call_gemini_api(
@@ -32,12 +35,6 @@ async def call_gemini_api(
             "topK": 40
         },
         # Configurações de segurança:
-        # HARM_BLOCK_THRESHOLD_UNSPECIFIED: Usa o padrão do modelo (recomendado para a maioria dos casos).
-        # BLOCK_LOW_AND_ABOVE: Bloqueia conteúdo com probabilidade baixa, média ou alta de ser inseguro.
-        # BLOCK_NONE: Não bloqueia nada (menos seguro, use com extrema cautela e apenas se entender os riscos).
-        # A configuração padrão (`HARM_BLOCK_THRESHOLD_UNSPECIFIED`) geralmente é a melhor.
-        # Se você precisa de controle mais granular, considere `BLOCK_LOW_AND_ABOVE`.
-        # Para fins de exemplo, estou usando `HARM_BLOCK_THRESHOLD_UNSPECIFIED`
         "safetySettings": [
             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "HARM_BLOCK_THRESHOLD_UNSPECIFIED"},
             {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "HARM_BLOCK_THRESHOLD_UNSPECIFIED"},
@@ -102,6 +99,9 @@ async def call_gemini_api(
         logger.error(f"Unexpected error calling Gemini API: {e}", exc_info=True)
         return None
 
+# Remova a função get_embedding daqui. Ela agora está em vectorstore_utils.py
+# async def get_embedding(...):
+#    ... (removido) ...
 
 async def count_gemini_tokens(api_key: str, model_name: str, parts_to_count: list[dict], debug_mode: bool = False) -> int:
     """
