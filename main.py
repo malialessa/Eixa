@@ -2,7 +2,7 @@ import os
 import json
 import logging
 import time
-import asyncio # Mantenha o asyncio
+import asyncio
 import functions_framework
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
@@ -19,10 +19,6 @@ CORS(app)
 GCP_PROJECT = os.environ.get("GCP_PROJECT")
 REGION = os.environ.get("REGION", "us-central1")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-# Usar os valores do config.py diretamente para os modelos default
-# (ou remover se não forem usados aqui no main.py, e sim passados do config para orchestrator)
-# GEMINI_TEXT_MODEL e GEMINI_VISION_MODEL serão importados de config.py, então não precisam ser lidos do ambiente aqui
-# e o eixa_orchestrator receberá os valores corretos.
 
 if not GCP_PROJECT:
     logger.critical("Variável de ambiente 'GCP_PROJECT' não definida.")
@@ -46,28 +42,28 @@ def log_request_info():
             "headers_snippet": {k: v for k, v in request.headers.items() if k.lower() in ['user-agent', 'x-forwarded-for', 'x-cloud-trace-context']}
         }))
 
-# === Função principal chamada via Cloud Run ===
-# Mude a função para assíncrona
-@functions_framework.http
-async def eixa_entry(request):
+# === Rota de Health Check (GET para a raiz) ===
+# Esta rota será o ponto de entrada para GET requests na raiz
+@app.route("/", methods=["GET"])
+def root_check():
+    return jsonify({"status": "ok", "message": "EIXA está no ar. Use /interact para interagir."}), 200
+
+# === Rota principal da API (POST e OPTIONS para /interact) ===
+# Usamos app.route aqui para que o Flask possa rotear OPTIONS/POST para o mesmo endpoint
+# sem precisar da lógica complexa dentro da eixa_entry (que é mais para o Flask-style)
+@app.route("/interact", methods=["POST", "OPTIONS"])
+async def interact_api(): # Função que será chamada para /interact
     start_time = time.time()
 
     headers = {
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, GET, OPTIONS', # Mantém GET e OPTIONS para a URL base
+        'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
         'Access-Control-Max-Age': '3600'
     }
 
     if request.method == 'OPTIONS':
         return Response(status=204, headers=headers)
-
-    # Se a requisição for GET para a raiz, pode retornar um status "OK" simples
-    if request.method == 'GET' and request.path == '/':
-        return jsonify({"status": "ok", "message": "EIXA está no ar."}), 200, headers
-
-    if request.method != 'POST':
-        return jsonify({"status": "error", "response": "Método não permitido. Use POST para interações."}), 405, headers
 
     request_json = request.get_json(silent=True)
     if not request_json:
@@ -85,7 +81,6 @@ async def eixa_entry(request):
 
     try:
         if request_type in ['chat_and_view', 'view_data']:
-            # Await diretamente, sem asyncio.run
             response_payload = await orchestrate_eixa_response(
                 user_id=user_id,
                 user_message=request_json.get('message'),
@@ -94,13 +89,12 @@ async def eixa_entry(request):
                 gcp_project_id=GCP_PROJECT,
                 region=REGION,
                 gemini_api_key=GEMINI_API_KEY,
-                gemini_text_model=GEMINI_TEXT_MODEL, # Passa do config.py
-                gemini_vision_model=GEMINI_VISION_MODEL, # Passa do config.py
+                gemini_text_model=GEMINI_TEXT_MODEL,
+                gemini_vision_model=GEMINI_VISION_MODEL,
                 firestore_collection_interactions='interactions',
                 debug_mode=debug_mode
             )
         elif request_type == 'crud_action':
-            # Await diretamente, sem asyncio.run
             response_payload = await orchestrate_crud_action(request_json)
         else:
             return jsonify({"status": "error", "response": f"Tipo de requisição inválido: '{request_type}'."}), 400, headers
@@ -133,17 +127,19 @@ async def eixa_entry(request):
             "debug_info": [f"Erro interno: {type(e).__name__} - {str(e)}"]
         }), 500, headers
 
+# === Função de entrada do functions_framework para o Cloud Run ===
+# Esta função serve como "wrapper" para a aplicação Flask.
+# Todas as requisições HTTP do Cloud Run são roteadas para esta função,
+# que por sua vez, as passa para a instância 'app' do Flask.
+@functions_framework.http
+def eixa_entry(request):
+    return app(request.environ, lambda status, headers: []) # Retorna o objeto Flask app callable
+
 # === Execução local para testes ===
 if __name__ == '__main__':
-    # No ambiente local, para rodar com Flask nativo, você ainda precisa da rota GET
-    # para testar o Health Check. No Cloud Run, functions_framework.http já lida com a raiz.
-    @app.route("/", methods=["GET"])
-    def root_check_local():
-        return jsonify({"status": "ok", "message": "EIXA está no ar (modo local)."}), 200
-
+    # Em execução local, o app.run() já gerencia o roteamento e a execução assíncrona.
     os.environ["GCP_PROJECT"] = os.environ.get("GCP_PROJECT", "local-dev-project")
     os.environ["REGION"] = os.environ.get("REGION", "us-central1")
-    # Defina uma chave Gemini para testes locais se necessário
     os.environ["GEMINI_API_KEY"] = os.environ.get("GEMINI_API_KEY", "YOUR_LOCAL_GEMINI_API_KEY") 
     port = int(os.environ.get('PORT', 8080))
     logger.info(f"Iniciando localmente na porta {port}")
