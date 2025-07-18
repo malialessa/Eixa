@@ -143,6 +143,10 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         confirmation_payload_cache = eixa_state.get('confirmation_payload_cache', {})
         stored_confirmation_message = eixa_state.get('confirmation_message', "Aguardando sua confirmação. Por favor, diga 'sim' ou 'não'.")
         
+        # LOG ADICIONADO/MODIFICADO AQUI PARA DEPURAR O ESTADO DA CONFIRMAÇÃO NO INÍCIO DA REQUISIÇÃO
+        logger.debug(f"ORCHESTRATOR_START | User '{user_id}' state: is_in_confirmation_state={is_in_confirmation_state}, confirmation_payload_cache_keys={list(confirmation_payload_cache.keys()) if confirmation_payload_cache else 'None'}. Full eixa_state={eixa_state}")
+
+
         user_flags_data_raw = await get_firestore_document_data('flags', user_id)
         user_flags_data = user_flags_data_raw.get("behavior_flags", user_flags_template_content) if user_flags_data_raw else user_flags_template_content
         if not user_flags_data_raw: # Se não existia, salva o template default
@@ -221,6 +225,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
 
     # --- 5. LÓGICA DE CONFIRMAÇÃO PENDENTE (MAIOR PRIORIDADE AQUI!) ---
     # Se o sistema está esperando uma confirmação do usuário.
+    # Esta é a LÓGICA DE CONFIRMAÇÃO (Sim/Não) que DEVE ser executada primeiro.
     if is_in_confirmation_state and confirmation_payload_cache:
         lower_message = user_message_for_processing.lower().strip()
         logger.debug(f"ORCHESTRATOR | Confirmation Flow: Message '{lower_message}'. Awaiting state: {is_in_confirmation_state}, Cached payload: {confirmation_payload_cache.get('action')}")
@@ -240,7 +245,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             payload_to_execute = confirmation_payload_cache
             
             # PONTO DE DEBUGGING CRÍTICO: Log antes de chamar orchestrate_crud_action
-            logger.debug(f"ORCHESTRATOR | Calling orchestrate_crud_action with payload: {payload_to_execute}") 
+            logger.debug(f"ORCHESTRATOR | About to call orchestrate_crud_action with payload: {payload_to_execute}") 
             
             crud_response = await orchestrate_crud_action(payload_to_execute) # Passa o payload completo
             
@@ -315,7 +320,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
 
     # --- 6. Lógica Principal de Inferência (SÓ SERÁ EXECUTADA SE NÃO ESTIVER EM CONFIRMAÇÃO PENDENTE) ---
     logger.debug(f"ORCHESTRATOR | Not in confirmation state. Proceeding with main inference flow.")
-
+    
     # 6.1. Processamento de Input para Gemini
     input_parser_results = await asyncio.to_thread(parse_incoming_input, user_message_for_processing, uploaded_file_data)
     user_prompt_parts = input_parser_results['prompt_parts_for_gemini']
@@ -465,7 +470,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
 
 
     # --- 5. Lógica de Conversação Genérica com LLM (Se nenhuma intenção específica foi tratada) ---
-    logger.debug(f"ORCHESTRATOR | No specific intent handled. Proceeding with generic LLM inference.")
+    logger.debug(f"ORCHESTRATOR | Not in confirmation state. Proceeding with main inference flow.")
     
     # Prepara histórico e contexto para a LLM genérica
     conversation_history = []
