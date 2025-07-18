@@ -4,8 +4,11 @@ import httpx
 import json
 import logging
 
-# Certifique-se de que a linha abaixo NÃO ESTÁ PRESENTE.
-# Remova: from vertexai.language_models import TextEmbeddingModel 
+# Importa as configurações do config.py
+from config import DEFAULT_MAX_OUTPUT_TOKENS, DEFAULT_TEMPERATURE, EMBEDDING_MODEL_NAME
+
+# Importação corrigida para a versão estável da biblioteca Vertex AI
+from vertexai.language_models import TextEmbeddingModel
 
 logger = logging.getLogger(__name__)
 
@@ -14,8 +17,9 @@ async def call_gemini_api(
     model_name: str,
     conversation_history: list[dict],
     system_instruction: str = None,
-    max_output_tokens: int = 2048,
-    temperature: float = 0.7,
+    # **CORREÇÃO AQUI**: Usando os valores padrão do config.py
+    max_output_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS,
+    temperature: float = DEFAULT_TEMPERATURE,
     debug_mode: bool = False
 ) -> str | None:
     """
@@ -60,18 +64,21 @@ async def call_gemini_api(
                 first_candidate = response_json['candidates'][0]
                 finish_reason = first_candidate.get('finishReason', 'UNKNOWN')
                 content = first_candidate.get('content', {})
-                parts = content.get('parts', [{}])
+                # **CORREÇÃO AQUI**: Garantir que parts[0].get('text') é tratado mesmo se for None/vazio
                 generated_text = parts[0].get('text')
                 
-                if generated_text:
+                # A LLM pode terminar com MAX_TOKENS e não gerar nada (generated_text é None ou "").
+                # Vamos logar isso claramente, mas retornar None para o orquestrador tratar.
+                if generated_text is not None and generated_text != "": # Verifica se há texto válido
                     logger.info(f"Gemini response text extracted successfully (first 100 chars): '{generated_text[:100]}...'")
                     if finish_reason != 'STOP':
                         logger.warning(f"Gemini response finished with reason: {finish_reason}. Appending truncation warning.")
                         generated_text += "\n\n[⚠️ AVISO: A resposta pode estar incompleta, pois o modelo atingiu um limite.]"
                     return generated_text
                 else:
-                    logger.warning(f"Gemini API response has candidates but no text content in parts. Finish reason: {finish_reason}. Response: {json.dumps(response_json, indent=2)}")
-                    return None
+                    logger.warning(f"Gemini API response has candidates but no text content in parts. Finish reason: {finish_reason}. This indicates the model likely finished due to MAX_TOKENS or generation constraint. Full Response: {json.dumps(response_json, indent=2)}")
+                    return None # Retornar None para o orquestrador lidar com a resposta vazia
+
             else:
                 safety_ratings = response_json.get('promptFeedback', {}).get('safetyRatings', [])
                 if safety_ratings:
@@ -90,10 +97,6 @@ async def call_gemini_api(
     except Exception as e:
         logger.error(f"Unexpected error calling Gemini API: {e}", exc_info=True)
         return None
-
-# REMOVA ESTA FUNÇÃO SE AINDA ESTIVER AQUI. ELA PERTENCE A vectorstore_utils.py
-# async def get_embedding(...):
-#    ... (REMOVIDO) ...
 
 async def count_gemini_tokens(api_key: str, model_name: str, parts_to_count: list[dict], debug_mode: bool = False) -> int:
     """

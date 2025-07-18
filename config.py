@@ -27,11 +27,11 @@ GEMINI_TEXT_MODEL        = "gemini-2.5-flash"
 # CORREÇÃO CRÍTICA: Atualizar o modelo de visão para um modelo suportado pela Google
 GEMINI_VISION_MODEL      = "gemini-1.5-flash" # RECOMENDADO: Ou "gemini-1.5-pro", se disponível e for mais adequado
 
-DEFAULT_TEMPERATURE      = 0.5
+DEFAULT_TEMPERATURE      = 0.4
 
 CONVERSATION_HARD_LIMIT_TOKENS = 8000
 MAX_PROMPT_TOKENS_BUDGET       = 8192 # Limite de tokens para o prompt (input do LLM)
-DEFAULT_MAX_OUTPUT_TOKENS      = 2048 # Limite máximo de tokens que o LLM deve gerar
+DEFAULT_MAX_OUTPUT_TOKENS      = 4096 # Limite máximo de tokens que o LLM deve gerar
 
 DEFAULT_TIMEZONE           = os.getenv('DEFAULT_TIMEZONE', 'America/Sao_Paulo')
 DEFAULT_TIMEOUT_SECONDS    = 30

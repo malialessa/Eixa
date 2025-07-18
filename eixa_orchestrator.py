@@ -207,78 +207,58 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"] = debug_info_logs
         return {"response_payload": response_payload} # <-- CORRIGIDO AQUI
 
+     # 1. Mensagem Vazia ou Upload de Arquivo (sem mensagem de texto)
     if not user_message and not uploaded_file_data:
         response_payload["status"] = "error"
         response_payload["response"] = "Nenhuma mensagem ou arquivo fornecido para interação."
-        # Mantém debug_info se já houver
         if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"] = debug_info_logs
-        return {"response_payload": response_payload} # <-- CORRIGIDO AQUI
+        return {"response_payload": response_payload}
 
+    # 2. Tradução da Mensagem (se necessário)
     user_input_for_saving = user_message or (uploaded_file_data.get('filename') if uploaded_file_data else "Ação do sistema")
-
-    # Adicionando debug para o idioma antes da chamada da API
-    logger.debug(f"ORCHESTRATOR | Raw user message for language detection: '{user_message}'")
     source_language = await detect_language(user_message or "Olá")
     response_payload["language"] = source_language
-    logger.info(f"ORCHESTRATOR | Detected source language: '{source_language}' for user '{user_id}'.")
-
     user_message_for_processing = user_message
     if source_language != 'pt' and user_message:
-        logger.info(f"ORCHESTRATOR | Translating user message from '{source_language}' to 'pt'. Original: '{user_message[:50]}...'.")
         translated_ai_response = await translate_text(user_message, "pt", source_language)
         if translated_ai_response is None:
-            logger.error(f"ORCHESTRATOR | Failed to translate user message from '{source_language}' to 'pt' for user '{user_id}'. Original: '{user_message}'.", exc_info=True)
             response_payload["status"] = "error"
             response_payload["response"] = f"Ocorreu um problema ao traduzir sua mensagem de {source_language}."
             if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"] = debug_info_logs
-            return {"response_payload": response_payload} # <-- CORRIGIDO AQUI
+            return {"response_payload": response_payload}
         user_message_for_processing = translated_ai_response
-        logger.info(f"ORCHESTRATOR | User message after translation: '{user_message_for_processing[:50]}...'.")
-
-    # Fetch full history before potential early exit due to confirmation logic
+    
     full_history = await get_user_history(user_id, firestore_collection_interactions, limit=20)
 
-    # --- Handle confirmation state FIRST ---
+
+    # --- 3. LÓGICA DE CONFIRMAÇÃO PENDENTE (MAIOR PRIORIDADE AQUI!) ---
+    # Se o sistema está esperando uma confirmação do usuário.
     if is_in_confirmation_state and confirmation_payload_cache:
         lower_message = user_message_for_processing.lower().strip()
-        
-        # NOVO DEBUG: Logar a mensagem em minúsculas para entender a falha de correspondência
-        logger.debug(f"ORCHESTRATOR | Inside confirmation block. lower_message='{lower_message}'.")
+        logger.debug(f"ORCHESTRATOR | Confirmation Flow: Message '{lower_message}'. Awaiting state: {is_in_confirmation_state}, Cached payload: {confirmation_payload_cache.get('action')}")
 
-        # LISTA DE KEYWORDS MAIS EXAUSTIVA E ROBUSTA PARA CONFIRMAÇÃO
         confirmation_keywords = [
             "sim", "ok", "confirmo", "confirma", "adicione", "crie", "pode",
             "certo", "beleza", "isso", "deletar", "excluir", "remover",
             "concluir", "finalizar", "ok, faça",
-            "sim, por favor", "sim por favor", "claro", "definitivamente", # Adicionadas frases exatas e sinônimos
-            "vai", "fazer", "execute", "prossiga", "adiante" # Mais sinônimos
+            "sim, por favor", "sim por favor", "claro", "definitivamente",
+            "vai", "fazer", "execute", "prossiga", "adiante"
         ]
-        
+        negative_keywords = ["não", "nao", "cancela", "esquece", "pare", "não quero", "nao quero", "negativo", "desisto"]
+
+        # Verifica se é uma resposta de confirmação POSITIVA
         if any(keyword in lower_message for keyword in confirmation_keywords):
-            logger.debug(f"ORCHESTRATOR | Positive confirmation keyword detected: '{lower_message}'.")
+            logger.info(f"ORCHESTRATOR | Confirmation Flow: Positive keyword '{lower_message}' detected. Attempting to execute cached CRUD.")
             payload_to_execute = confirmation_payload_cache
-            item_type = payload_to_execute.get('item_type')
-            action = payload_to_execute.get('action')
-            item_id = payload_to_execute.get('item_id')
-            data = payload_to_execute.get('data', {})
-
-            logger.debug(f"ORCHESTRATOR | Calling orchestrate_crud_action with payload from confirmation cache: {{'user_id': '{user_id}', 'item_type': '{item_type}', 'action': '{action}', 'item_id': '{item_id}', 'data': {data}}}")
-
-            crud_response = await orchestrate_crud_action(
-                {"user_id": user_id, "item_type": item_type, "action": action, "item_id": item_id, "data": data}
-            )
-
-            # Aprimoramento da mensagem final APÓS A CONFIRMAÇÃO DO CRUD
+            crud_response = await orchestrate_crud_action(payload_to_execute) # Passa o payload completo
+            
             if crud_response.get("status") == "success":
                 final_ai_response = crud_response.get("message", "Ação concluída com sucesso.")
-                if action == "create":
-                    final_ai_response += " Como posso te ajudar a dar os primeiros passos?"
-                elif action == "update" and data.get("completed"):
-                    final_ai_response += " Que ótimo! Qual o próximo passo ou tarefa em que você quer focar?"
-                elif action == "delete":
-                    final_ai_response += " O que mais podemos otimizar ou organizar?"
-                else:
-                    final_ai_response += " O que mais posso fazer por você?"
+                action = payload_to_execute.get('action') # Pega a ação do payload original
+                if action == "create": final_ai_response += " Como posso te ajudar a dar os primeiros passos?"
+                elif action == "update" and payload_to_execute.get('data', {}).get("completed"): final_ai_response += " Que ótimo! Qual o próximo passo ou tarefa em que você quer focar?"
+                elif action == "delete": final_ai_response += " O que mais podemos otimizar ou organizar?"
+                else: final_ai_response += " O que mais posso fazer por você?"
                 response_payload["status"] = "success"
                 logger.info(f"ORCHESTRATOR | User '{user_id}' confirmed action. CRUD executed successfully.")
             elif crud_response.get("status") == "duplicate":
@@ -290,7 +270,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 response_payload["status"] = "error"
                 logger.error(f"ORCHESTRATOR | User '{user_id}' confirmed action, but CRUD failed: {crud_response}")
 
-            # --- CORREÇÃO: Limpeza explícita do estado de confirmação ---
+            # Limpeza explícita do estado de confirmação
             try:
                 user_profile_ref = firestore.client().collection('eixa_profiles').document(user_id)
                 await asyncio.to_thread(user_profile_ref.update({
@@ -301,27 +281,20 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 logger.info(f"ORCHESTRATOR | Confirmation state explicitly cleared for user '{user_id}'.")
             except Exception as e:
                 logger.error(f"ORCHESTRATOR | Failed to explicitly clear confirmation state for user '{user_id}': {e}", exc_info=True)
-            # --- FIM DA CORREÇÃO ---
 
             response_payload["response"] = final_ai_response
-            response_payload["debug_info"] = {
-                "intent_detected": item_type, 
-                "action_confirmed": action,
-                "item_type_confirmed": item_type,
-                "crud_result_status": crud_response.get("status"), 
-                "tarefas_ativas_injetadas": 0, 
-                "memoria_emocional_tags": [], 
-                "padroes_sabotagem_detectados": {}, 
-            }
-            await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
+            response_payload["debug_info"] = { "intent_detected": payload_to_execute.get('item_type'), "action_confirmed": payload_to_execute.get('action'), "crud_result_status": crud_response.get("status")}
             if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"] = debug_info_logs
-            return {"response_payload": response_payload} # <-- CORRIGIDO AQUI
+            await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
+            return {"response_payload": response_payload} # <--- RETORNO IMEDIATO APÓS CONFIRMAÇÃO POSITIVA
 
-        elif any(keyword in lower_message for keyword in ["não", "nao", "cancela", "esquece", "pare", "não quero", "nao quero", "negativo", "desisto"]): # Adicionado mais opções para cancelamento
-            logger.debug(f"ORCHESTRATOR | Negative confirmation keyword detected: '{lower_message}'.")
+        # Verifica se é uma resposta de confirmação NEGATIVA
+        elif any(keyword in lower_message for keyword in negative_keywords):
+            logger.info(f"ORCHESTRATOR | Confirmation Flow: Negative keyword '{lower_message}' detected. Canceling cached action.")
             final_ai_response = "Ok, entendi. Ação cancelada."
             response_payload["status"] = "success" 
-            # --- CORREÇÃO: Limpeza explícita do estado de confirmação ---
+            
+            # Limpeza explícita do estado de confirmação
             try:
                 user_profile_ref = firestore.client().collection('eixa_profiles').document(user_id)
                 await asyncio.to_thread(user_profile_ref.update({
@@ -332,73 +305,59 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 logger.info(f"ORCHESTRATOR | Confirmation state explicitly cleared (rejection) for user '{user_id}'.")
             except Exception as e:
                 logger.error(f"ORCHESTRATOR | Failed to explicitly clear confirmation state (rejection) for user '{user_id}': {e}", exc_info=True)
-            # --- FIM DA CORREÇÃO ---
 
             response_payload["response"] = final_ai_response + " Como posso ajudar de outra forma?"
-            response_payload["debug_info"] = {
-                "intent_detected": "cancellation",
-                "action_confirmed": "cancel",
-                "item_type_confirmed": "none",
-                "crud_result_status": "cancelled", 
-            }
-            await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
+            response_payload["debug_info"] = { "intent_detected": "cancellation", "action_confirmed": "cancel" }
             if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"] = debug_info_logs
-            return {"response_payload": response_payload} # <-- CORRIGIDO AQUI
-        else:
-            # NOVO DEBUG: A mensagem é ambígua, re-promovendo.
-            logger.debug(f"ORCHESTRATOR | User response '{lower_message}' in confirmation state was ambiguous. Re-prompting.")
+            await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
+            return {"response_payload": response_payload} # <--- RETORNO IMEDIATO APÓS CONFIRMAÇÃO NEGATIVA
+        
+        else: # Mensagem ambígua em estado de confirmação (re-prompt)
+            logger.info(f"ORCHESTRATOR | Confirmation Flow: Ambiguous message '{lower_message}'. Re-prompting.")
             response_payload["response"] = stored_confirmation_message 
             response_payload["status"] = "awaiting_confirmation"
-            await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
             if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"] = debug_info_logs
-            return {"response_payload": response_payload} # <-- CORRIGIDO AQUI
-
-    # --- CORREÇÃO: Controle da Chamada ao LLM para extrair intenções CRUD ---
-    # APENAS chame o extrator de intenções LLM se NÃO estivermos em um estado de confirmação pendente
-    crud_intent_data = {"intent_detected": "none"} # Default para evitar erro
-    intent_detected_in_orchestrator = "conversa" # Default
-
-    if not is_in_confirmation_state: # <--- NOVA CONDIÇÃO AQUI
-        crud_intent_data = await _extract_crud_intent_with_llm(user_id, user_message_for_processing, full_history, gemini_api_key, gemini_text_model)
-        intent_detected_in_orchestrator = crud_intent_data.get("intent_detected", "conversa")
-        logger.debug(f"ORCHESTRATOR | LLM intent extraction result: {intent_detected_in_orchestrator}")
-    else:
-        # Se is_in_confirmation_state é True, já sabemos que a intenção original veio de um CRUD.
-        # Não precisamos re-extrair, pois a lógica de confirmação já está lidando com isso no bloco acima.
-        # Definimos uma intenção que não vai entrar nos blocos de CRUD abaixo.
-        intent_detected_in_orchestrator = "already_in_confirmation_flow"
-        logger.debug(f"ORCHESTRATOR | Skipping LLM intent extraction because already in confirmation state.")
-    # --- FIM DA CORREÇÃO ---
+            await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
+            return {"response_payload": response_payload} # <--- RETORNO IMEDIATO PARA RE-PROMPT
 
 
-    # --- Restante do fluxo normal (só será executado se não estiver em confirmação E não for CRUD direto) ---
-    logger.debug(f"ORCHESTRATOR | Not in confirmation state or confirmation handled. Proceeding with LLM inference.")
+    # --- 4. Lógica Principal de Inferência (SÓ SERÁ EXECUTADA SE NÃO ESTIVER EM CONFIRMAÇÃO PENDENTE) ---
+    logger.debug(f"ORCHESTRATOR | Not in confirmation state. Proceeding with main inference flow.")
 
+    # 4.1. Processamento de Input para Gemini
     input_parser_results = await asyncio.to_thread(parse_incoming_input, user_message_for_processing, uploaded_file_data)
     user_prompt_parts = input_parser_results['prompt_parts_for_gemini']
     gemini_model_override = input_parser_results['gemini_model_override']
-    logger.info(f"ORCHESTRATOR | Input parser results for user '{user_id}' - Model override: {gemini_model_override}, Prompt parts count: {len(user_prompt_parts)}.")
+    gemini_final_model = gemini_vision_model if uploaded_file_data else gemini_text_model 
 
+
+    # 4.2. Detecção e Atualização de Configurações de Perfil (Direto)
     profile_settings_results = await parse_and_update_profile_settings(user_id, user_message_for_processing, user_profile_template_content)
     if profile_settings_results.get("profile_updated"):
         direct_action_message = profile_settings_results['action_message']
-        user_profile = await get_user_profile_data(user_id, user_profile_template_content) 
-        intent_detected_in_orchestrator = "configuracao_perfil" # SOBRESCRITO se a configuração foi a ação principal
+        user_profile = await get_user_profile_data(user_id, user_profile_template_content) # Recarrega o perfil após a atualização
         response_payload["response"] = direct_action_message
         response_payload["status"] = "success"
-        response_payload["debug_info"] = {"intent_detected": intent_detected_in_orchestrator, "crud_result_status": "success"} 
-        await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
+        response_payload["debug_info"] = {"intent_detected": "configuracao_perfil", "crud_result_status": "success"} 
         if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
-        return {"response_payload": response_payload} # <-- CORRIGIDO AQUI
+        await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
+        return {"response_payload": response_payload} # <--- RETORNO para configuração de perfil
 
-    # Este bloco só será ativado se 'intent_detected_in_orchestrator' for "task" ou "project",
-    # o que só acontece se não estivéssemos em estado de confirmação antes.
+    # 4.3. Extração de Intenções CRUD pela LLM
+    # A LLM é chamada aqui, pois não estamos em um fluxo de confirmação.
+    crud_intent_data = await _extract_crud_intent_with_llm(user_id, user_message_for_processing, full_history, gemini_api_key, gemini_text_model)
+    intent_detected_in_orchestrator = crud_intent_data.get("intent_detected", "conversa")
+    logger.debug(f"ORCHESTRATOR | LLM intent extraction result: {intent_detected_in_orchestrator}")
+
+
+    # 4.4. Processamento de Intenções CRUD (Task ou Project)
     if intent_detected_in_orchestrator in ["task", "project"]:
         item_type = crud_intent_data['intent_detected']
         action = crud_intent_data['action']
         item_details = crud_intent_data['item_details']
         llm_generated_confirmation_message = crud_intent_data['confirmation_message'] 
 
+        # Lógica para TAREFAS
         if item_type == 'task':
             task_description = item_details.get("name") or item_details.get("description")
             task_date = item_details.get("date") 
@@ -406,22 +365,36 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             if action == 'create' and (not task_description or not task_date):
                 response_payload["response"] = "Não consegui extrair todos os detalhes necessários para a tarefa (descrição e data). Por favor, seja mais específico."
                 response_payload["status"] = "error"
-                await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
                 if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
-                return {"response_payload": response_payload} # <-- CORRIGIDO AQUI
+                await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
+                return {"response_payload": response_payload}
 
-            corrected_task_date = task_date 
-            if task_date:
+            corrected_task_date = task_date # LLM já deve ter inferido YYYY-MM-DD
+            # Lógica de correção de ano para datas passadas (se LLM inferir ano errado)
+            if corrected_task_date:
                 try:
-                    local_tz = pytz.timezone(user_profile.get('timezone', DEFAULT_TIMEZONE))
-                    parsed_date_for_display = local_tz.localize(datetime.fromisoformat(corrected_task_date))
-                    formatted_date = parsed_date_for_display.strftime("%d de %B de %Y")
-                    confirmation_message = f"Confirma que deseja adicionar a tarefa '{task_description}' para {formatted_date}?"
-                except ValueError as ve_display:
-                    logger.warning(f"ORCHESTRATOR | Error formatting corrected_task_date '{corrected_task_date}' for display: {ve_display}. Using raw date.", exc_info=True)
-                    confirmation_message = f"Confirma que deseja adicionar a tarefa '{task_description}' para a data especificada ({corrected_task_date})?"
-            else: 
-                 confirmation_message = f"Confirma que deseja adicionar a tarefa '{task_description}'?"
+                    parsed_date_obj = datetime.strptime(corrected_task_date, "%Y-%m-%d").date()
+                    current_date_today = datetime.now(timezone.utc).date()
+                    
+                    if parsed_date_obj < current_date_today:
+                        # Se a data parseada é anterior à data de hoje, tenta ajustar para o ano atual ou próximo.
+                        # Ex: Se hoje é 2025-07-17 e LLM diz 'segunda-feira', parseando para 2024-07-20 (do histórico).
+                        # Ou se LLM diz '16 de julho' e é 17 de julho, LLM pode inferir 2025-07-16.
+                        test_next_year = parsed_date_obj.replace(year=current_date_today.year + 1)
+                        if test_next_year >= current_date_today: # Se a data no próximo ano for válida (não no passado ainda)
+                            corrected_task_date = test_next_year.isoformat()
+                            logger.info(f"ORCHESTRATOR | Task date '{parsed_date_obj}' was in the past. Adjusted to {corrected_task_date} (next year).")
+                        else:
+                            # Se mesmo no próximo ano ainda estiver no passado, tenta ano atual (se for o caso de 29 de Fev, por exemplo)
+                            test_current_year = parsed_date_obj.replace(year=current_date_today.year)
+                            if test_current_year >= current_date_today:
+                                corrected_task_date = test_current_year.isoformat()
+                                logger.info(f"ORCHESTRATOR | Task date '{parsed_date_obj}' was in the past. Adjusted to {corrected_task_date} (current year).")
+                            else:
+                                logger.warning(f"ORCHESTRATOR | Task date '{parsed_date_obj}' from LLM is in the past and cannot be reliably adjusted to future. Using original from LLM as fallback.", exc_info=True)
+                except ValueError as ve:
+                    logger.warning(f"ORCHESTRATOR | Task date '{corrected_task_date}' from LLM could not be parsed for year correction ({ve}). Using original from LLM as fallback.", exc_info=True)
+
             completed_status = True if action == 'complete' else (item_details.get('status') == 'completed' if 'status' in item_details else None)
             
             provisional_payload_data = {"description": task_description, "date": corrected_task_date} 
@@ -438,7 +411,9 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 if corrected_task_date:
                     try:
                         local_tz = pytz.timezone(user_profile.get('timezone', DEFAULT_TIMEZONE))
-                        parsed_date_for_display = local_tz.localize(datetime.fromisoformat(corrected_task_date))
+                        # Localiza a data parseada na timezone do usuário, para o dia correto.
+                        parsed_date_for_display_naive = datetime.fromisoformat(corrected_task_date)
+                        parsed_date_for_display = local_tz.localize(parsed_date_for_display_naive)
                         formatted_date = parsed_date_for_display.strftime("%d de %B de %Y")
                         confirmation_message = f"Confirma que deseja adicionar a tarefa '{task_description}' para {formatted_date}?"
                     except ValueError as ve_display:
@@ -452,14 +427,15 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             else: 
                 confirmation_message = llm_generated_confirmation_message or "Confirma esta ação?"
 
+        # Lógica para PROJETOS
         elif item_type == 'project':
             project_name = item_details.get("name")
             if action == 'create' and not project_name:
                 response_payload["response"] = "Não consegui extrair o nome do projeto. Por favor, seja mais específico."
                 response_payload["status"] = "error"
-                await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
                 if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
-                return {"response_payload": response_payload} # <-- CORRIGIDO AQUI
+                await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
+                return {"response_payload": response_payload} # <--- Retorno se projeto sem nome
 
             provisional_payload = {
                 "item_type": "project",
@@ -476,17 +452,16 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             else:
                 confirmation_message = llm_generated_confirmation_message
 
+        # Salva o estado de confirmação e retorna a mensagem
         await set_firestore_document(
-            'profiles',
-            user_id,
+            'profiles', user_id,
             {
                 'user_profile.eixa_state': {
                     'awaiting_confirmation': True,
                     'confirmation_payload_cache': provisional_payload,
                     'confirmation_message': confirmation_message 
                 }
-            },
-            merge=True
+            }, merge=True
         )
         logger.info(f"ORCHESTRATOR | LLM inferred {item_type} {action} intent for user '{user_id}'. Awaiting confirmation. Provisional payload: {provisional_payload}")
 
@@ -500,34 +475,25 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         }
         await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
         if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
-        return {"response_payload": response_payload} # <-- CORRIGIDO AQUI
+        return {"response_payload": response_payload} # <--- RETORNO para intenção CRUD detectada
 
-    # --- Normal LLM conversation flow (final fallback if no specific intent handled) ---
-    logger.debug(f"ORCHESTRATOR | Not in confirmation state or specific intent handled. Proceeding with LLM inference.")
+
+    # --- 5. Lógica de Conversação Genérica com LLM (Se nenhuma intenção específica foi tratada) ---
+    logger.debug(f"ORCHESTRATOR | No specific intent handled. Proceeding with generic LLM inference.")
+    
+    # Prepara histórico e contexto para a LLM genérica
     conversation_history = []
     for turn in full_history:
-        if turn.get("input"):
-            conversation_history.append({"role": "user", "parts": [{"text": turn.get("input")}]})
-        if turn.get("output"):
-            conversation_history.append({"role": "model", "parts": [{"text": turn.get("output")}]})
-
+        if turn.get("input"): conversation_history.append({"role": "user", "parts": [{"text": turn.get("input")}]})
+        if turn.get("output"): conversation_history.append({"role": "model", "parts": [{"text": turn.get("output")}]})
     debug_info_logs.append(f"History prepared with {len(full_history)} turns for LLM context.")
-    logger.debug(f"ORCHESTRATOR | Conversation history sent to Gemini for user '{user_id}': {conversation_history[:2]}...")
 
-    # --- INJETAR CONTEXTO TEMPORAL NO PROMPT DO LLM ---
     current_datetime_utc = datetime.now(timezone.utc)
-    current_date_iso = current_datetime_utc.strftime("%Y-%m-%d")
-    current_year = current_datetime_utc.year
     day_names_pt = {0: "segunda-feira", 1: "terça-feira", 2: "quarta-feira", 3: "quinta-feira", 4: "sexta-feira", 5: "sábado", 6: "domingo"}
-    current_day_of_week = day_names_pt[current_datetime_utc.weekday()]
-
-    contexto_temporal = f"--- CONTEXTO TEMPORAL ATUAL ---\n"
-    contexto_temporal += f"A data atual é {current_date_iso} ({current_day_of_week}). O ano atual é {current_year}.\n"
-    contexto_temporal += f"Considere esta como a base para inferências de datas relativas (ex: 'amanhã', 'próxima semana', 'quarta-feira').\n"
-    contexto_temporal += f"--- FIM DO CONTEXTO TEMPORAL ---\n\n"
+    contexto_temporal = f"--- CONTEXTO TEMPORAL ATUAL ---\nA data atual é {current_datetime_utc.strftime('%Y-%m-%d')} ({day_names_pt[current_datetime_utc.weekday()]}). O ano atual é {current_datetime_utc.year}.\n--- FIM DO CONTEXTO TEMPORAL ---\n\n"
     debug_info_logs.append("Temporal context generated for LLM.")
 
-    # --- Memória Vetorial (Contextualização de Longo prazo) ---
+    # Memória Vetorial (Contextualização de Longo prazo)
     if user_message_for_processing and gcp_project_id and region:
         user_query_embedding = await get_embedding(user_message_for_processing, gcp_project_id, region, model_name=EMBEDDING_MODEL_NAME) 
         if user_query_embedding:
@@ -536,48 +502,30 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 context_string = "\n".join(["--- CONTEXTO DE MEMÓRIAS RELEVANTES DE LONGO PRAZO:"] + [f"- {mem['content']}" for mem in relevant_memories])
                 logger.info(f"ORCHESTRATOR | Adding {len(relevant_memories)} relevant memories to LLM context for user '{user_id}'.")
                 conversation_history.insert(0, {"role": "user", "parts": [{"text": context_string}]}) 
-            else: 
-                logger.debug(f"ORCHESTRATOR | No relevant memories found for user '{user_id}' based on embedding query.")
-        else: 
-            logger.warning(f"ORCHESTRATOR | Could not generate embedding for user message to retrieve memories for user '{user_id}'. Skipping vector memory retrieval.", exc_info=True)
+        else: logger.warning(f"ORCHESTRATOR | Could not generate embedding for user message. Skipping vector memory retrieval.", exc_info=True)
 
     conversation_history.append({"role": "user", "parts": user_prompt_parts})
 
-    # --- CONSTRUÇÃO DO CONTEXTO CRÍTICO ---
+    # Constrói o contexto crítico de tarefas e projetos
     contexto_critico = "--- TAREFAS PENDENTES E PROJETOS ATIVOS DO USUÁRIO ---\n"
-
     current_tasks = await get_all_daily_tasks(user_id)
     flat_current_tasks = [task_data for day_data in current_tasks.values() for task_data in day_data.get('tasks', [])]
-
     current_projects = await get_all_projects(user_id)
 
     if flat_current_tasks:
-        contexto_critico += "Tarefas Pendentes:\n"
-        for task in flat_current_tasks:
-            desc = task.get('description', 'Tarefa sem descrição')
-            status = task.get('completed', False)
-            contexto_critico += f"- {desc} (Status: {'Concluída' if status else 'Pendente'})\n"
-    else:
-        contexto_critico += "Nenhuma tarefa pendente registrada.\n"
-
+        contexto_critico += "Tarefas Pendentes:\n" + "\n".join(f"- {t.get('description', 'N/A')} (Status: {'Concluída' if t.get('completed', False) else 'Pendente'})" for t in flat_current_tasks)
+    else: contexto_critico += "Nenhuma tarefa pendente registrada.\n"
     if current_projects:
-        contexto_critico += "Projetos Ativos:\n"
-        for proj in current_projects:
-            proj_name = proj.get('name', 'N/A')
-            proj_status = proj.get('status', 'N/A') 
-            contexto_critico += f"- {proj_name} (Status: {proj_status})\n"
-    else:
-        contexto_critico += "Nenhum projeto ativo registrado.\n"
+        contexto_critico += "\nProjetos Ativos:\n" + "\n".join(f"- {p.get('name', 'N/A')} (Status: {p.get('status', 'N/A')})" for p in current_projects)
+    else: contexto_critico += "\nNenhum projeto ativo registrado.\n"
     contexto_critico += "--- FIM DO CONTEXTO CRÍTICO ---\n\n"
     debug_info_logs.append("Critical context generated for LLM.")
 
-    # --- Construção do system_instruction dinâmico para o LLM (APRIMORADO) ---
+    # Constrói o contexto de perfil
     base_persona_with_name = base_eixa_persona_template_text.replace("{{user_display_name}}", user_display_name)
-
     contexto_perfil_str = f"--- CONTEXTO DO PERFIL DO USUÁRIO ({user_display_name}):\n"
     profile_summary_parts = []
-
-    # Ajustado para o perfil minimalista: verifica se as chaves existem e se as listas não estão vazias
+    # ... (lógica de construção do perfil, como você já tem) ...
     if user_profile.get('psychological_profile'):
         psych = user_profile['psychological_profile']
         if psych.get('personality_traits') and isinstance(psych['personality_traits'], list) and psych['personality_traits']: profile_summary_parts.append(f"  - Traços de Personalidade: {', '.join(psych['personality_traits'])}")
@@ -630,30 +578,24 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             if alerts_rem.get('eye_strain'): daily_routine_list.append(f"Alerta Fadiga Visual: {alerts_rem['eye_strain']}")
             if alerts_rem.get('mobility'): daily_routine_list.append(f"Alerta Mobilidade: {alerts_rem['mobility']}")
             if alerts_rem.get('mindfulness'): daily_routine_list.append(f"Alerta Mindfulness: {alerts_rem['mindfulness']}")
-            if alerts_rem.get('meal_times'): daily_routine_list.append(f"Alerta Refeições: {alerts_rem['meal_times']}")
+            if alerts_rem.get('meal_times'): daily_routine_list.append(f"Alerta Refeições: {', '.join(alerts_rem['meal_times'])}")
             if alerts_rem.get('medication_reminders') and isinstance(alerts_rem['medication_reminders'], list) and alerts_rem['medication_reminders']: daily_routine_list.append(f"Alerta Medicação: {', '.join(alerts_rem['medication_reminders'])}")
             if alerts_rem.get('overwhelm_triggers') and isinstance(alerts_rem['overwhelm_triggers'], list) and alerts_rem['overwhelm_triggers']: daily_routine_list.append(f"Gatilhos Sobrecarga: {', '.join(alerts_rem['overwhelm_triggers'])}")
             if alerts_rem.get('burnout_indicators') and isinstance(alerts_rem['burnout_indicators'], list) and alerts_rem['burnout_indicators']: daily_routine_list.append(f"Indicadores Burnout: {', '.join(alerts_rem['burnout_indicators'])}")
         
         if daily_routine_list: profile_summary_parts.append(f"  - Elementos da Rotina Diária: {'; '.join(daily_routine_list)}")
 
-
     contexto_perfil_str += "\n".join(profile_summary_parts) if profile_summary_parts else "  Nenhum dado de perfil detalhado disponível.\n"
     contexto_perfil_str += "--- FIM DO CONTEXTO DE PERFIL ---\n\n"
 
-    # Concatena todos os contextos para a system_instruction final
     final_system_instruction = contexto_temporal + contexto_critico + contexto_perfil_str + base_persona_with_name
 
-    logger.info(f"ORCHESTRATOR | Calling Gemini API with model '{gemini_final_model}' for user '{user_id}'.")
+    # Chamada LLM genérica
     gemini_response_text_in_pt = await call_gemini_api(
-        api_key=gemini_api_key,
-        model_name=gemini_final_model,
-        conversation_history=conversation_history,
-        system_instruction=final_system_instruction,
-        max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
+        api_key=gemini_api_key, model_name=gemini_final_model, conversation_history=conversation_history,
+        system_instruction=final_system_instruction, max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
         temperature=DEFAULT_TEMPERATURE
     )
-    logger.info(f"ORCHESTRATOR | Gemini API call completed for user '{user_id}'. Raw response received: {gemini_response_text_in_pt is not None}.")
 
     final_ai_response = gemini_response_text_in_pt
 
