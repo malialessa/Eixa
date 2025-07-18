@@ -1,3 +1,4 @@
+# minimal_user_profile_template.yaml
 version: "3.0"
 user_profile:
   metadata:
@@ -23,6 +24,7 @@ user_profile:
     medium_term: []
     long_term: []
   current_projects: []
-  eixa_interaction_preferences: {}
+  eixa_interaction_preferences: 
+    display_profile_in_long_term_memory: true 
   expected_eixa_actions: []
   specific_no_gos: []
