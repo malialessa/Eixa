@@ -1,4 +1,3 @@
-# vertex_utils.py
 import os
 import httpx
 import json

@@ -16,7 +16,7 @@ async def get_firestore_document_data(logical_collection_name: str, document_id:
         # REMOVIDO: source='SERVER'
         doc = await asyncio.to_thread(db.collection(collection_ref.id).document(document_id).get)
         if doc.exists:
-            logger.debug(f"FIRESTORE_UTILS | Document '{document_id}' fetched from collection '{logical_collection_name}'.") # Log atualizado (sem Source)
+            logger.debug(f"FIRESTORE_UTILS | Document '{document_id}' fetched from collection '{logical_collection_name}'.")
             return doc.to_dict()
         else:
             logger.info(f"FIRESTORE_UTILS | Document '{document_id}' not found in collection '{logical_collection_name}'.")
@@ -37,7 +37,7 @@ async def set_firestore_document(logical_collection_name: str, document_id: str,
 
 async def delete_firestore_document(logical_collection_name: str, document_id: str):
     try:
-        collection_ref = get_top_level_collection(logical_name)
+        collection_ref = get_top_level_collection(logical_collection_name) # CORREÇÃO AQUI: logical_name -> logical_collection_name
         db = _initialize_firestore_client_instance()
         await asyncio.to_thread(db.collection(collection_ref.id).document(document_id).delete)
         logger.info(f"FIRESTORE_UTILS | Document '{document_id}' deleted from collection '{logical_collection_name}'.")
@@ -76,11 +76,10 @@ async def get_user_profile_data(user_id: str, user_profile_template_content: dic
     profile_collection_ref = get_top_level_collection('profiles')
     db = _initialize_firestore_client_instance()
     
-    # REMOVIDO: source='SERVER'
     profile_doc = await asyncio.to_thread(db.collection(profile_collection_ref.id).document(user_id).get)
 
     if profile_doc.exists:
-        logger.info(f"FIRESTORE_UTILS | User profile for '{user_id}' fetched from Firestore in '{profile_collection_ref.id}'.") # Log atualizado (sem Source)
+        logger.info(f"FIRESTORE_UTILS | User profile for '{user_id}' fetched from Firestore in '{profile_collection_ref.id}'.")
         current_profile_data = profile_doc.to_dict().get('user_profile', profile_doc.to_dict())
 
         if 'goals' in current_profile_data and isinstance(current_profile_data['goals'], dict):
@@ -135,3 +134,37 @@ async def save_interaction(user_id: str, user_input: str, eixa_output: str, lang
         logger.info(f"FIRESTORE_UTILS | Interaction saved for user '{user_id}' with ID '{doc_id}'.")
     except Exception as e:
         logger.error(f"FIRESTORE_UTILS | Error saving interaction for user '{user_id}': {e}", exc_info=True)
+
+# NOVAS FUNÇÕES PARA GERENCIAR O ESTADO DE CONFIRMAÇÃO SEPARADAMENTE
+async def get_confirmation_state(user_id: str) -> dict:
+    db = _initialize_firestore_client_instance()
+    pending_actions_ref = get_top_level_collection('pending_actions')
+    doc_ref = pending_actions_ref.document(user_id)
+    doc = await asyncio.to_thread(doc_ref.get) # Removido source='SERVER'
+    if doc.exists:
+        logger.debug(f"FIRESTORE_UTILS | Confirmation state fetched for user '{user_id}'.")
+        return doc.to_dict()
+    logger.debug(f"FIRESTORE_UTILS | No confirmation state found for user '{user_id}'.")
+    return {}
+
+async def set_confirmation_state(user_id: str, state_data: dict):
+    db = _initialize_firestore_client_instance()
+    pending_actions_ref = get_top_level_collection('pending_actions')
+    doc_ref = pending_actions_ref.document(user_id)
+    try:
+        await asyncio.to_thread(doc_ref.set, state_data) # set para garantir criação/substituição completa
+        logger.info(f"FIRESTORE_UTILS | Confirmation state set for user '{user_id}'.")
+    except Exception as e:
+        logger.error(f"FIRESTORE_UTILS | Failed to set confirmation state for user '{user_id}': {e}", exc_info=True)
+        raise
+
+async def clear_confirmation_state(user_id: str):
+    db = _initialize_firestore_client_instance()
+    pending_actions_ref = get_top_level_collection('pending_actions')
+    doc_ref = pending_actions_ref.document(user_id)
+    try:
+        await asyncio.to_thread(doc_ref.delete)
+        logger.info(f"FIRESTORE_UTILS | Confirmation state cleared for user '{user_id}'.")
+    except Exception as e:
+        logger.error(f"FIRESTORE_UTILS | Failed to clear confirmation state for user '{user_id}': {e}", exc_info=True)
+        raise

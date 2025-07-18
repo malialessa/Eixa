@@ -1,4 +1,3 @@
-# vectorstore_utils.py
 import logging
 import asyncio
 from typing import List, Dict

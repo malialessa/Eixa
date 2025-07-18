@@ -19,8 +19,16 @@ from vertex_utils import call_gemini_api
 from vectorstore_utils import get_embedding, add_memory_to_vectorstore, get_relevant_memories 
 
 # Importações de firestore_utils para operar com o Firestore
-from firestore_utils import get_user_profile_data, get_firestore_document_data, set_firestore_document, save_interaction
-from google.cloud import firestore # Importar firestore aqui para usar firestore.DELETE_FIELD
+from firestore_utils import ( # Modified: Added confirmation state functions
+    get_user_profile_data,
+    get_firestore_document_data,
+    set_firestore_document,
+    save_interaction,
+    get_confirmation_state,    # ADDED THIS
+    set_confirmation_state,    # ADDED THIS
+    clear_confirmation_state   # ADDED THIS
+)
+from google.cloud import firestore # Importar firestore aqui para usar firestore.DELETE_FIELD (still used in other files)
 
 from nudger import analyze_for_nudges
 from user_behavior import track_repetition 
@@ -138,13 +146,15 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             )
         user_profile = await get_user_profile_data(user_id, user_profile_template_content)
         user_display_name = user_profile.get('name') if user_profile.get('name') else f"Usuário EIXA"
-        eixa_state = user_profile.get('eixa_state', {})
-        is_in_confirmation_state = eixa_state.get('awaiting_confirmation', False)
-        confirmation_payload_cache = eixa_state.get('confirmation_payload_cache', {})
-        stored_confirmation_message = eixa_state.get('confirmation_message', "Aguardando sua confirmação. Por favor, diga 'sim' ou 'não'.")
         
-        # LOG ADICIONADO/MODIFICADO AQUI PARA DEPURAR O ESTADO DA CONFIRMAÇÃO NO INÍCIO DA REQUISIÇÃO
-        logger.debug(f"ORCHESTRATOR_START | User '{user_id}' req: '{user_message[:50] if user_message else '[no message]'}' | State: is_in_confirmation_state={is_in_confirmation_state}, confirmation_payload_cache_keys={list(confirmation_payload_cache.keys()) if confirmation_payload_cache else 'None'}. Full eixa_state={eixa_state}")
+        # MODIFIED: Load confirmation state from dedicated collection
+        confirmation_state_data = await get_confirmation_state(user_id) # MODIFIED
+        is_in_confirmation_state = confirmation_state_data.get('awaiting_confirmation', False) # MODIFIED
+        confirmation_payload_cache = confirmation_state_data.get('confirmation_payload_cache', {}) # MODIFIED
+        stored_confirmation_message = confirmation_state_data.get('confirmation_message', "Aguardando sua confirmação. Por favor, diga 'sim' ou 'não'.") # MODIFIED
+        
+        # LOG MODIFIED to reflect new confirmation state source
+        logger.debug(f"ORCHESTRATOR_START | User '{user_id}' req: '{user_message[:50] if user_message else '[no message]'}' | State: is_in_confirmation_state={is_in_confirmation_state}, confirmation_payload_cache_keys={list(confirmation_payload_cache.keys()) if confirmation_payload_cache else 'None'}. Loaded confirmation_state_data={confirmation_state_data}")
 
 
         user_flags_data_raw = await get_firestore_document_data('flags', user_id)
@@ -286,18 +296,13 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 response_payload["status"] = "error"
                 logger.error(f"ORCHESTRATOR | User '{user_id}' confirmed action, but CRUD failed: {crud_response}")
 
-            # Limpeza explícita do estado de confirmação
+            # MODIFIED: Use clear_confirmation_state from firestore_utils
             try:
-                user_profile_ref = firestore.client().collection('eixa_profiles').document(user_id)
-                logger.debug(f"ORCHESTRATOR | Attempting to clear confirmation state for user '{user_id}'.") # Novo log
-                await asyncio.to_thread(user_profile_ref.update({
-                    'user_profile.eixa_state.awaiting_confirmation': firestore.DELETE_FIELD,
-                    'user_profile.eixa_state.confirmation_payload_cache': firestore.DELETE_FIELD,
-                    'user_profile.eixa_state.confirmation_message': firestore.DELETE_FIELD
-                }))
-                logger.info(f"ORCHESTRATOR | Confirmation state explicitly cleared for user '{user_id}'.")
+                logger.debug(f"ORCHESTRATOR | Attempting to clear confirmation state for user '{user_id}' after positive confirmation.")
+                await clear_confirmation_state(user_id) # MODIFIED
+                logger.info(f"ORCHESTRATOR | Confirmation state explicitly cleared for user '{user_id}' after positive confirmation.")
             except Exception as e:
-                logger.error(f"ORCHESTRATOR | Failed to explicitly clear confirmation state for user '{user_id}': {e}", exc_info=True)
+                logger.error(f"ORCHESTRATOR | Failed to explicitly clear confirmation state for user '{user_id}' after positive confirmation: {e}", exc_info=True)
 
             response_payload["response"] = final_ai_response
             response_payload["debug_info"] = { "intent_detected": payload_to_execute.get('item_type'), "action_confirmed": payload_to_execute.get('action'), "crud_result_status": crud_response.get("status")}
@@ -311,15 +316,10 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             final_ai_response = "Ok, entendi. Ação cancelada."
             response_payload["status"] = "success" 
             
-            # Limpeza explícita do estado de confirmação
+            # MODIFIED: Use clear_confirmation_state from firestore_utils
             try:
-                user_profile_ref = firestore.client().collection('eixa_profiles').document(user_id)
-                logger.debug(f"ORCHESTRATOR | Attempting to clear confirmation state (rejection) for user '{user_id}'.") # Novo log
-                await asyncio.to_thread(user_profile_ref.update({
-                    'user_profile.eixa_state.awaiting_confirmation': firestore.DELETE_FIELD,
-                    'user_profile.eixa_state.confirmation_payload_cache': firestore.DELETE_FIELD,
-                    'user_profile.eixa_state.confirmation_message': firestore.DELETE_FIELD
-                }))
+                logger.debug(f"ORCHESTRATOR | Attempting to clear confirmation state (rejection) for user '{user_id}'.")
+                await clear_confirmation_state(user_id) # MODIFIED
                 logger.info(f"ORCHESTRATOR | Confirmation state explicitly cleared (rejection) for user '{user_id}'.")
             except Exception as e:
                 logger.error(f"ORCHESTRATOR | Failed to explicitly clear confirmation state (rejection) for user '{user_id}': {e}", exc_info=True)
@@ -471,16 +471,14 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             else:
                 confirmation_message = llm_generated_confirmation_message
 
-        # Salva o estado de confirmação e retorna a mensagem
-        await set_firestore_document(
-            'profiles', user_id,
+        # MODIFIED: Save confirmation state using set_confirmation_state
+        await set_confirmation_state( # MODIFIED
+            user_id,
             {
-                'user_profile.eixa_state': {
-                    'awaiting_confirmation': True,
-                    'confirmation_payload_cache': provisional_payload,
-                    'confirmation_message': confirmation_message 
-                }
-            }, merge=True
+                'awaiting_confirmation': True,
+                'confirmation_payload_cache': provisional_payload,
+                'confirmation_message': confirmation_message 
+            }
         )
         logger.info(f"ORCHESTRATOR | LLM inferred {item_type} {action} intent for user '{user_id}'. Awaiting confirmation. Provisional payload: {provisional_payload}")
 

@@ -1,116 +1,170 @@
-import base64
-import re
-import io
+# firestore_utils.py
 import logging
-from PIL import Image
-import fitz # Importação para PDF
-from docx import Document # Importação para DOCX
-from typing import Dict
+from google.cloud import firestore
+from firestore_client_singleton import _initialize_firestore_client_instance
+from collections_manager import get_top_level_collection, get_user_doc_ref
+import copy
+from datetime import datetime, timezone
+import asyncio 
 
 logger = logging.getLogger(__name__)
 
-# --- Constantes de Configuração ---
-MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
-MAX_PDF_PAGES = 50  # Limite para evitar abuso de processamento
-
-def process_uploaded_file(base64_data: str, filename: str, mimetype: str) -> Dict:
-    """
-    Processa um arquivo enviado (base64), sanitiza a entrada e extrai o conteúdo relevante.
-    Retorna um dicionário estruturado com tipo, conteúdo e metadados.
-
-    Known Limitations:
-    - PDF Processing: Does not perform Optical Character Recognition (OCR). PDFs containing
-      only scanned images will not yield extractable text.
-    - DOCX Processing: Does not extract images or other embedded objects from DOCX files,
-      only textual content from paragraphs and tables.
-    - File Types: Does not support specialized formats like RAW, SVG, or older .doc files.
-    """
-    if not base64_data:
-        raise ValueError("Dados em base64 não podem estar vazios.")
-
-    # 1. Sanitização: Remove o prefixo 'data:...' comum em uploads de frontend
+async def get_firestore_document_data(logical_collection_name: str, document_id: str) -> dict | None:
     try:
-        base64_clean = re.sub(r'^data:.+;base64,', '', base64_data)
-        decoded_bytes = base64.b64decode(base64_clean)
-        file_size = len(decoded_bytes)
-    except (TypeError, ValueError) as e:
-        logger.error(f"Falha ao decodificar base64 para o arquivo '{filename}': {e}", exc_info=True)
-        raise ValueError("Dados em base64 inválidos ou corrompidos.")
+        collection_ref = get_top_level_collection(logical_collection_name)
+        db = _initialize_firestore_client_instance()
+        # REMOVIDO: source='SERVER'
+        doc = await asyncio.to_thread(db.collection(collection_ref.id).document(document_id).get)
+        if doc.exists:
+            logger.debug(f"FIRESTORE_UTILS | Document '{document_id}' fetched from collection '{logical_collection_name}'.")
+            return doc.to_dict()
+        else:
+            logger.info(f"FIRESTORE_UTILS | Document '{document_id}' not found in collection '{logical_collection_name}'.")
+            return None
+    except Exception as e:
+        logger.error(f"FIRESTORE_UTILS | Error fetching document '{document_id}' from collection '{logical_collection_name}': {e}", exc_info=True)
+        return None
 
-    if file_size > MAX_FILE_SIZE_BYTES:
-        raise ValueError(f"O tamanho do arquivo excede o limite de {MAX_FILE_SIZE_BYTES / (1024*1024):.1f} MB.")
+async def set_firestore_document(logical_collection_name: str, document_id: str, data: dict, merge: bool = False):
+    try:
+        collection_ref = get_top_level_collection(logical_collection_name)
+        db = _initialize_firestore_client_instance()
+        await asyncio.to_thread(db.collection(collection_ref.id).document(document_id).set, data, merge=merge)
+        logger.info(f"FIRESTORE_UTILS | Document '{document_id}' set in collection '{logical_collection_name}'. Merge: {merge}")
+    except Exception as e:
+        logger.error(f"FIRESTORE_UTILS | Error setting document '{document_id}' in collection '{logical_collection_name}': {e}", exc_info=True)
+        raise
 
-    metadata = {
-        "filename": filename,
-        "size_bytes": file_size,
-        "mime_type": mimetype
-    }
+async def delete_firestore_document(logical_collection_name: str, document_id: str):
+    try:
+        collection_ref = get_top_level_collection(logical_collection_name) # CORREÇÃO AQUI: logical_name -> logical_collection_name
+        db = _initialize_firestore_client_instance()
+        await asyncio.to_thread(db.collection(collection_ref.id).document(document_id).delete)
+        logger.info(f"FIRESTORE_UTILS | Document '{document_id}' deleted from collection '{logical_collection_name}'.")
+    except Exception as e:
+        logger.error(f"FIRESTORE_UTILS | Error deleting document '{document_id}' from collection '{logical_collection_name}': {e}", exc_info=True)
+        raise
 
-    # 2. Processamento por Tipo de Arquivo
-    if mimetype.startswith('image/'):
-        try:
-            Image.open(io.BytesIO(decoded_bytes))
-            logger.info(f"Arquivo de imagem processado: '{filename}' ({mimetype})")
-            return {
-                'type': 'image',
-                'content': {'base64_image': base64_clean, 'mime_type': mimetype},
-                'metadata': metadata
-            }
-        except Exception as e:
-            logger.error(f"Arquivo de imagem inválido '{filename}': {e}", exc_info=True)
-            raise ValueError(f"Não foi possível processar o arquivo de imagem: {filename}")
+def _normalize_goals_structure(goals_data: dict) -> dict:
+    normalized_goals = {}
+    for term_type in ['short_term', 'medium_term', 'long_term']:
+        items = goals_data.get(term_type, [])
+        if isinstance(items, list):
+            normalized_items = []
+            for item in items:
+                if isinstance(item, str):
+                    normalized_items.append({"value": item})
+                elif isinstance(item, dict) and "value" in item:
+                    normalized_items.append(item)
+                else:
+                    if isinstance(item, dict) and item:
+                        first_value = next(iter(item.values()), None)
+                        if first_value:
+                            normalized_items.append({"value": str(first_value)})
+                        else:
+                            logger.warning(f"FIRESTORE_UTILS | Unexpected empty dict in goal item for {term_type}: {item}. Skipping.")
+                    else:
+                        logger.warning(f"FIRESTORE_UTILS | Unexpected goal item format for {term_type}: {item}. Skipping.")
+            normalized_goals[term_type] = normalized_items
+        else:
+            logger.warning(f"FIRESTORE_UTILS | Goals '{term_type}' is not a list. Skipping normalization.")
+            normalized_goals[term_type] = []
+    return normalized_goals
 
-    elif mimetype == 'application/pdf':
-        try:
-            doc = fitz.open(stream=decoded_bytes, filetype="pdf")
-            text_content = ""
-            for i, page in enumerate(doc):
-                if i >= MAX_PDF_PAGES:
-                    logger.warning(f"PDF '{filename}' excedeu o limite de {MAX_PDF_PAGES} páginas. Processamento interrompido.")
-                    break
-                text_content += page.get_text("text")
-            doc.close()
 
-            if not text_content.strip():
-                logger.warning(f"PDF '{filename}' não contém texto extraível. Pode ser um arquivo de imagem escaneado.")
-                return {
-                    'type': 'text',
-                    'content': {'text_content': "[AVISO: O PDF não contém texto legível e pode ser uma imagem escaneada.]"},
-                    'metadata': metadata
-                }
+async def get_user_profile_data(user_id: str, user_profile_template_content: dict) -> dict:
+    profile_collection_ref = get_top_level_collection('profiles')
+    db = _initialize_firestore_client_instance()
+    
+    profile_doc = await asyncio.to_thread(db.collection(profile_collection_ref.id).document(user_id).get)
 
-            logger.info(f"PDF processado: '{filename}', extraídos {len(text_content)} caracteres.")
-            return {
-                'type': 'text',
-                'content': {'text_content': text_content},
-                'metadata': metadata
-            }
-        except Exception as e:
-            logger.error(f"Erro ao processar PDF '{filename}' com PyMuPDF: {e}", exc_info=True)
-            raise ValueError(f"Não foi possível processar o arquivo PDF: {filename}")
+    if profile_doc.exists:
+        logger.info(f"FIRESTORE_UTILS | User profile for '{user_id}' fetched from Firestore in '{profile_collection_ref.id}'.")
+        current_profile_data = profile_doc.to_dict().get('user_profile', profile_doc.to_dict())
 
-    elif mimetype == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
-        try:
-            doc = Document(io.BytesIO(decoded_bytes))
-            text_content_parts = []
-            for para in doc.paragraphs:
-                text_content_parts.append(para.text)
-            for table in doc.tables:
-                for row in table.rows:
-                    for cell in row.cells:
-                        text_content_parts.append(cell.text)
+        if 'goals' in current_profile_data and isinstance(current_profile_data['goals'], dict):
+            current_profile_data['goals'] = _normalize_goals_structure(current_profile_data['goals'])
 
-            text_content = "\n".join(text_content_parts)
-            logger.info(f"Arquivo DOCX processado: '{filename}', extraídos {len(text_content)} caracteres.")
-            return {
-                'type': 'text',
-                'content': {'text_content': text_content},
-                'metadata': metadata
-            }
-        except Exception as e:
-            logger.error(f"Erro ao processar DOCX '{filename}': {e}", exc_info=True)
-            raise ValueError(f"Não foi possível processar o arquivo DOCX: {filename}")
-
+        return current_profile_data
     else:
-        logger.warning(f"Tipo de arquivo não suportado: '{mimetype}' para o arquivo '{filename}'.")
-        raise ValueError(f"Tipo de arquivo não suportado: {mimetype}. Apenas imagens (JPG/PNG), PDF e DOCX são permitidos.")
+        logger.info(f"FIRESTORE_UTILS | User profile for '{user_id}' not found. Creating default profile.")
+
+        if not isinstance(user_profile_template_content, dict):
+            logger.error("FIRESTORE_UTILS | Default template para perfil de usuário é inválido (não é um dicionário). Retornando vazio.")
+            return {}
+
+        new_profile_content = copy.deepcopy(user_profile_template_content)
+
+        if "creation_date" not in new_profile_content or new_profile_content["creation_date"] is None:
+            new_profile_content["creation_date"] = datetime.now(timezone.utc).isoformat()
+
+        new_profile_content["last_updated"] = datetime.now(timezone.utc).isoformat()
+
+        new_profile_content["user_id"] = user_id 
+
+        if not new_profile_content.get('name'):
+             new_profile_content['name'] = user_id
+
+        if 'goals' in new_profile_content and isinstance(new_profile_content['goals'], dict):
+            new_profile_content['goals'] = _normalize_goals_structure(new_profile_content['goals'])
+
+        try:
+            await asyncio.to_thread(db.collection(profile_collection_ref.id).document(user_id).set, {'user_profile': new_profile_content})
+            logger.info(f"FIRESTORE_UTILS | Default user profile created and saved for '{user_id}' in '{profile_collection_ref.id}'.")
+            return new_profile_content
+        except Exception as e:
+            logger.error(f"FIRESTORE_UTILS | Falha ao criar perfil padrão para o usuário '{user_id}': {e}", exc_info=True)
+            return new_profile_content
+
+async def save_interaction(user_id: str, user_input: str, eixa_output: str, language: str, logical_collection_name: str):
+    try:
+        interactions_ref = get_top_level_collection(logical_collection_name)
+        timestamp = datetime.now(timezone.utc)
+        doc_id = f"{user_id}_{timestamp.isoformat().replace(':', '-').replace('.', '_')}"
+
+        interaction_data = {
+            "user_id": user_id,
+            "input": user_input,
+            "output": eixa_output,
+            "language": language,
+            "timestamp": timestamp
+        }
+        db = _initialize_firestore_client_instance()
+        await asyncio.to_thread(db.collection(interactions_ref.id).document(doc_id).set, interaction_data)
+        logger.info(f"FIRESTORE_UTILS | Interaction saved for user '{user_id}' with ID '{doc_id}'.")
+    except Exception as e:
+        logger.error(f"FIRESTORE_UTILS | Error saving interaction for user '{user_id}': {e}", exc_info=True)
+
+# NOVAS FUNÇÕES PARA GERENCIAR O ESTADO DE CONFIRMAÇÃO SEPARADAMENTE
+async def get_confirmation_state(user_id: str) -> dict:
+    db = _initialize_firestore_client_instance()
+    pending_actions_ref = get_top_level_collection('pending_actions')
+    doc_ref = pending_actions_ref.document(user_id)
+    doc = await asyncio.to_thread(doc_ref.get) # Removido source='SERVER'
+    if doc.exists:
+        logger.debug(f"FIRESTORE_UTILS | Confirmation state fetched for user '{user_id}'.")
+        return doc.to_dict()
+    logger.debug(f"FIRESTORE_UTILS | No confirmation state found for user '{user_id}'.")
+    return {}
+
+async def set_confirmation_state(user_id: str, state_data: dict):
+    db = _initialize_firestore_client_instance()
+    pending_actions_ref = get_top_level_collection('pending_actions')
+    doc_ref = pending_actions_ref.document(user_id)
+    try:
+        await asyncio.to_thread(doc_ref.set, state_data) # set para garantir criação/substituição completa
+        logger.info(f"FIRESTORE_UTILS | Confirmation state set for user '{user_id}'.")
+    except Exception as e:
+        logger.error(f"FIRESTORE_UTILS | Failed to set confirmation state for user '{user_id}': {e}", exc_info=True)
+        raise
+
+async def clear_confirmation_state(user_id: str):
+    db = _initialize_firestore_client_instance()
+    pending_actions_ref = get_top_level_collection('pending_actions')
+    doc_ref = pending_actions_ref.document(user_id)
+    try:
+        await asyncio.to_thread(doc_ref.delete)
+        logger.info(f"FIRESTORE_UTILS | Confirmation state cleared for user '{user_id}'.")
+    except Exception as e:
+        logger.error(f"FIRESTORE_UTILS | Failed to clear confirmation state for user '{user_id}': {e}", exc_info=True)
+        raise
