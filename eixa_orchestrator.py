@@ -264,6 +264,16 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 elif action == "delete": final_ai_response += " O que mais podemos otimizar ou organizar?"
                 else: final_ai_response += " O que mais posso fazer por você?"
                 response_payload["status"] = "success"
+
+                # >>> ADIÇÃO CRÍTICA AQUI: RECARREGAR HTML_VIEW_DATA APÓS SUCESSO DE CRUD <<<
+                if payload_to_execute.get('item_type') == 'task':
+                    response_payload["html_view_data"]["agenda"] = await get_all_daily_tasks(user_id)
+                    logger.debug("ORCHESTRATOR | Updated 'agenda' in html_view_data after task CRUD success.")
+                elif payload_to_execute.get('item_type') == 'project':
+                    response_payload["html_view_data"]["projetos"] = await get_all_projects(user_id)
+                    logger.debug("ORCHESTRATOR | Updated 'projetos' in html_view_data after project CRUD success.")
+                # >>> FIM DA ADIÇÃO CRÍTICA <<<
+
                 logger.info(f"ORCHESTRATOR | User '{user_id}' confirmed action. CRUD executed successfully.")
             elif crud_response.get("status") == "duplicate":
                 logger.warning(f"ORCHESTRATOR | CRUD action returned duplicate: {crud_response.get('message')}") # Novo log
@@ -386,6 +396,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             corrected_task_date = task_date 
             if task_date:
                 try:
+                    local_tz = pytz.timezone(user_profile.get('timezone', DEFAULT_TIMEZONE))
                     parsed_date_obj = datetime.strptime(task_date, "%Y-%m-%d").date()
                     current_date_today = datetime.now(timezone.utc).date()
                     
@@ -461,7 +472,6 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 confirmation_message = llm_generated_confirmation_message
 
         # Salva o estado de confirmação e retorna a mensagem
-        logger.debug(f"ORCHESTRATOR | Saving confirmation state to Firestore for user '{user_id}'.") # Novo log
         await set_firestore_document(
             'profiles', user_id,
             {
