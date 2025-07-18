@@ -2,7 +2,7 @@
 import base64
 import logging
 # Reutiliza a lógica de processamento de arquivos do file_utils
-from file_utils import process_uploaded_file  
+import file_utils  # ALTERADO: Importa o módulo inteiro
 from typing import Dict
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,8 @@ def parse_incoming_input(
     if uploaded_file_data:
         input_type = 'multimodal'
         try:
-            processed_file_content = process_uploaded_file(
+            # ALTERADO: Acessa a função via o módulo importado
+            processed_file_content = file_utils.process_uploaded_file( 
                 uploaded_file_data['base64'], 
                 uploaded_file_data['filename'], 
                 uploaded_file_data['mimetype']
