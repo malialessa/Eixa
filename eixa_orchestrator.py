@@ -76,7 +76,7 @@ async def _extract_crud_intent_with_llm(user_id: str, user_message: str, history
     - "Preciso de ajuda com ansiedade." -> `{"intent_detected": "none"}`
     - "O que você acha disso?" -> `{"intent_detected": "none"}`
     """
-
+    logger.debug(f"_extract_crud_intent_with_llm: Processing message '{user_message[:50]}...' for CRUD intent.") # Novo log
     llm_history = []
     for turn in history[-5:]: 
         if turn.get("input"):
@@ -144,7 +144,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         stored_confirmation_message = eixa_state.get('confirmation_message', "Aguardando sua confirmação. Por favor, diga 'sim' ou 'não'.")
         
         # LOG ADICIONADO/MODIFICADO AQUI PARA DEPURAR O ESTADO DA CONFIRMAÇÃO NO INÍCIO DA REQUISIÇÃO
-        logger.debug(f"ORCHESTRATOR_START | User '{user_id}' state: is_in_confirmation_state={is_in_confirmation_state}, confirmation_payload_cache_keys={list(confirmation_payload_cache.keys()) if confirmation_payload_cache else 'None'}. Full eixa_state={eixa_state}")
+        logger.debug(f"ORCHESTRATOR_START | User '{user_id}' req: '{user_message[:50] if user_message else '[no message]'}' | State: is_in_confirmation_state={is_in_confirmation_state}, confirmation_payload_cache_keys={list(confirmation_payload_cache.keys()) if confirmation_payload_cache else 'None'}. Full eixa_state={eixa_state}")
 
 
         user_flags_data_raw = await get_firestore_document_data('flags', user_id)
@@ -167,6 +167,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
 
     # --- 2. Processamento de Requisições de Visualização (view_request) ---
     if view_request:
+        logger.debug(f"ORCHESTRATOR | Processing view_request: {view_request}") # Novo log
         if view_request == "agenda":
             agenda_data = await get_all_daily_tasks(user_id)
             response_payload["html_view_data"]["agenda"] = agenda_data
@@ -195,14 +196,15 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             response_payload["status"] = "error"
             response_payload["response"] = "View solicitada inválida."
 
-        if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"] = debug_info_logs
+        if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
         return {"response_payload": response_payload}
 
     # --- 3. Verificação de Mensagem Vazia ---
     if not user_message and not uploaded_file_data:
+        logger.debug("ORCHESTRATOR | No user message or file data provided.") # Novo log
         response_payload["status"] = "error"
         response_payload["response"] = "Nenhuma mensagem ou arquivo fornecido para interação."
-        if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"] = debug_info_logs
+        if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
         return {"response_payload": response_payload}
 
     # --- 4. Preparação da Mensagem (Idioma, Histórico) ---
@@ -210,23 +212,27 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
     source_language = await detect_language(user_message or "Olá")
     response_payload["language"] = source_language
     user_message_for_processing = user_message
+    logger.debug(f"ORCHESTRATOR | Detected source language: {source_language}") # Novo log
     if source_language != 'pt' and user_message:
+        logger.debug(f"ORCHESTRATOR | Translating user message from {source_language} to pt.") # Novo log
         translated_user_message = await translate_text(user_message, "pt", source_language) # Corrigido aqui
         if translated_user_message is None:
             response_payload["status"] = "error"
             response_payload["response"] = f"Ocorreu um problema ao traduzir sua mensagem de {source_language}."
-            if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"] = debug_info_logs
+            if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
             await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
             return {"response_payload": response_payload}
         user_message_for_processing = translated_user_message
     
     full_history = await get_user_history(user_id, firestore_collection_interactions, limit=20)
+    logger.debug(f"ORCHESTRATOR | Full history retrieved, {len(full_history)} turns.") # Novo log
 
 
     # --- 5. LÓGICA DE CONFIRMAÇÃO PENDENTE (MAIOR PRIORIDADE AQUI!) ---
     # Se o sistema está esperando uma confirmação do usuário.
     # Esta é a LÓGICA DE CONFIRMAÇÃO (Sim/Não) que DEVE ser executada primeiro.
     if is_in_confirmation_state and confirmation_payload_cache:
+        logger.debug(f"ORCHESTRATOR | Entered confirmation state logic path.") # Novo log
         lower_message = user_message_for_processing.lower().strip()
         logger.debug(f"ORCHESTRATOR | Confirmation Flow: Message '{lower_message}'. Awaiting state: {is_in_confirmation_state}, Cached payload: {confirmation_payload_cache.get('action')}")
 
@@ -250,6 +256,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             crud_response = await orchestrate_crud_action(payload_to_execute) # Passa o payload completo
             
             if crud_response.get("status") == "success":
+                logger.debug(f"ORCHESTRATOR | CRUD action returned success: {crud_response.get('message')}") # Novo log
                 final_ai_response = crud_response.get("message", "Ação concluída com sucesso.")
                 action = payload_to_execute.get('action') # Pega a ação do payload original
                 if action == "create": final_ai_response += " Como posso te ajudar a dar os primeiros passos?"
@@ -259,10 +266,12 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 response_payload["status"] = "success"
                 logger.info(f"ORCHESTRATOR | User '{user_id}' confirmed action. CRUD executed successfully.")
             elif crud_response.get("status") == "duplicate":
+                logger.warning(f"ORCHESTRATOR | CRUD action returned duplicate: {crud_response.get('message')}") # Novo log
                 final_ai_response = crud_response.get("message", "Ação não realizada: item duplicado.")
                 response_payload["status"] = "warning" 
                 logger.info(f"ORCHESTRATOR | User '{user_id}' confirmed action, but detected as duplicate.")
             else: 
+                logger.error(f"ORCHESTRATOR | CRUD action returned error status: {crud_response}") # Novo log
                 final_ai_response = crud_response.get("message", "Houve um erro ao executar a ação confirmada.")
                 response_payload["status"] = "error"
                 logger.error(f"ORCHESTRATOR | User '{user_id}' confirmed action, but CRUD failed: {crud_response}")
@@ -270,6 +279,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             # Limpeza explícita do estado de confirmação
             try:
                 user_profile_ref = firestore.client().collection('eixa_profiles').document(user_id)
+                logger.debug(f"ORCHESTRATOR | Attempting to clear confirmation state for user '{user_id}'.") # Novo log
                 await asyncio.to_thread(user_profile_ref.update({
                     'user_profile.eixa_state.awaiting_confirmation': firestore.DELETE_FIELD,
                     'user_profile.eixa_state.confirmation_payload_cache': firestore.DELETE_FIELD,
@@ -281,7 +291,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
 
             response_payload["response"] = final_ai_response
             response_payload["debug_info"] = { "intent_detected": payload_to_execute.get('item_type'), "action_confirmed": payload_to_execute.get('action'), "crud_result_status": crud_response.get("status")}
-            if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"] = debug_info_logs
+            if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
             await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
             return {"response_payload": response_payload} # <--- RETORNO IMEDIATO APÓS CONFIRMAÇÃO POSITIVA
 
@@ -294,6 +304,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             # Limpeza explícita do estado de confirmação
             try:
                 user_profile_ref = firestore.client().collection('eixa_profiles').document(user_id)
+                logger.debug(f"ORCHESTRATOR | Attempting to clear confirmation state (rejection) for user '{user_id}'.") # Novo log
                 await asyncio.to_thread(user_profile_ref.update({
                     'user_profile.eixa_state.awaiting_confirmation': firestore.DELETE_FIELD,
                     'user_profile.eixa_state.confirmation_payload_cache': firestore.DELETE_FIELD,
@@ -305,7 +316,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
 
             response_payload["response"] = final_ai_response + " Como posso ajudar de outra forma?"
             response_payload["debug_info"] = { "intent_detected": "cancellation", "action_confirmed": "cancel" }
-            if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"] = debug_info_logs
+            if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
             await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
             return {"response_payload": response_payload} # <--- RETORNO IMEDIATO APÓS CONFIRMAÇÃO NEGATIVA
         
@@ -313,7 +324,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             logger.info(f"ORCHESTRATOR | Confirmation Flow: Ambiguous message '{lower_message}'. Re-prompting.")
             response_payload["response"] = stored_confirmation_message 
             response_payload["status"] = "awaiting_confirmation"
-            if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"] = debug_info_logs
+            if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
             await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
             return {"response_payload": response_payload} # <--- RETORNO IMEDIATO PARA RE-PROMPT
 
@@ -322,15 +333,19 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
     logger.debug(f"ORCHESTRATOR | Not in confirmation state. Proceeding with main inference flow.")
     
     # 6.1. Processamento de Input para Gemini
+    logger.debug(f"ORCHESTRATOR | Calling parse_incoming_input for message: '{user_message_for_processing[:50] if user_message_for_processing else '[no message]'}'") # Novo log
     input_parser_results = await asyncio.to_thread(parse_incoming_input, user_message_for_processing, uploaded_file_data)
     user_prompt_parts = input_parser_results['prompt_parts_for_gemini']
     gemini_model_override = input_parser_results['gemini_model_override']
     gemini_final_model = gemini_vision_model if uploaded_file_data else gemini_text_model 
+    logger.debug(f"ORCHESTRATOR | Input parsed. Model selected: {gemini_final_model}") # Novo log
 
 
     # 6.2. Detecção e Atualização de Configurações de Perfil (Direto)
+    logger.debug(f"ORCHESTRATOR | Calling parse_and_update_profile_settings.") # Novo log
     profile_settings_results = await parse_and_update_profile_settings(user_id, user_message_for_processing, user_profile_template_content)
     if profile_settings_results.get("profile_updated"):
+        logger.debug(f"ORCHESTRATOR | Profile settings updated directly: {profile_settings_results.get('action_message')}") # Novo log
         direct_action_message = profile_settings_results['action_message']
         user_profile = await get_user_profile_data(user_id, user_profile_template_content) # Recarrega o perfil após a atualização
         response_payload["response"] = direct_action_message
@@ -342,6 +357,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
 
     # 6.3. Extração de Intenções CRUD pela LLM
     # A LLM é chamada aqui, pois não estamos em um fluxo de confirmação.
+    logger.debug(f"ORCHESTRATOR | Calling _extract_crud_intent_with_llm.") # Novo log
     crud_intent_data = await _extract_crud_intent_with_llm(user_id, user_message_for_processing, full_history, gemini_api_key, gemini_text_model)
     intent_detected_in_orchestrator = crud_intent_data.get("intent_detected", "conversa")
     logger.debug(f"ORCHESTRATOR | LLM intent extraction result: {intent_detected_in_orchestrator}")
@@ -349,6 +365,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
 
     # 6.4. Processamento de Intenções CRUD (Task ou Project)
     if intent_detected_in_orchestrator in ["task", "project"]:
+        logger.debug(f"ORCHESTRATOR | Detected LLM intent for CRUD: {intent_detected_in_orchestrator}.") # Novo log
         item_type = crud_intent_data['intent_detected']
         action = crud_intent_data['action']
         item_details = crud_intent_data['item_details']
@@ -444,6 +461,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 confirmation_message = llm_generated_confirmation_message
 
         # Salva o estado de confirmação e retorna a mensagem
+        logger.debug(f"ORCHESTRATOR | Saving confirmation state to Firestore for user '{user_id}'.") # Novo log
         await set_firestore_document(
             'profiles', user_id,
             {
@@ -489,6 +507,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         # Se a cota de embedding está estourada, esta chamada vai falhar.
         # No entanto, como o usuário pediu para ignorar o erro de cota por enquanto,
         # a EIXA seguirá sem a memória vetorial.
+        logger.debug(f"ORCHESTRATOR | Attempting to generate embedding for user query.") # Novo log
         user_query_embedding = await get_embedding(user_message_for_processing, gcp_project_id, region, model_name=EMBEDDING_MODEL_NAME) 
         if user_query_embedding:
             relevant_memories = await get_relevant_memories(user_id, user_query_embedding, n_results=5) 
@@ -502,6 +521,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
 
     # Constrói o contexto crítico de tarefas e projetos
     contexto_critico = "--- TAREFAS PENDENTES E PROJETOS ATIVOS DO USUÁRIO ---\n"
+    logger.debug(f"ORCHESTRATOR | Fetching all daily tasks and projects for critical context.") # Novo log
     current_tasks = await get_all_daily_tasks(user_id)
     flat_current_tasks = [task_data for day_data in current_tasks.values() for task_data in day_data.get('tasks', [])]
     current_projects = await get_all_projects(user_id)
@@ -585,6 +605,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
     final_system_instruction = contexto_temporal + contexto_critico + contexto_perfil_str + base_persona_with_name
 
     # Chamada LLM genérica
+    logger.debug(f"ORCHESTRATOR | Calling Gemini API for generic response. Model: {gemini_final_model}") # Novo log
     gemini_response_text_in_pt = await call_gemini_api(
         api_key=gemini_api_key, model_name=gemini_final_model, conversation_history=conversation_history,
         system_instruction=final_system_instruction, max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
@@ -654,6 +675,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
 
     if user_message_for_processing and final_ai_response and gcp_project_id and region:
         # Erros de quota para embeddings são logados aqui, mas não impedem o fluxo principal se o embedding não for gerado.
+        logger.debug(f"ORCHESTRATOR | Attempting to generate embedding for interaction.") # Novo log
         text_for_embedding = f"User: {user_message_for_processing}\nAI: {final_ai_response}"
         interaction_embedding = await get_embedding(text_for_embedding, gcp_project_id, region, model_name=EMBEDDING_MODEL_NAME) 
         if interaction_embedding:

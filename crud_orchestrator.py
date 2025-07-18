@@ -14,10 +14,7 @@ logger = logging.getLogger(__name__)
 # --- Funções CRUD Internas para Tarefas (Task) ---
 
 async def _create_task_data(user_id: str, date_str: str, description: str) -> Dict[str, Any]:
-    """
-    Cria uma nova tarefa com um ID único e a adiciona ao Firestore para um dia específico.
-    Retorna o status da operação e a nova tarefa, se bem-sucedida.
-    """
+    logger.debug(f"CRUD | Task | _create_task_data: Entered for user '{user_id}', date '{date_str}', desc '{description}'") # Novo log
     if not description:
         logger.warning(f"CRUD | Task | Create failed: Description is mandatory for user '{user_id}'.")
         return {"status": "error", "message": "A descrição é obrigatória para criar uma tarefa.", "data": {}}
@@ -26,8 +23,10 @@ async def _create_task_data(user_id: str, date_str: str, description: str) -> Di
     new_task = {"id": task_id, "description": description.strip(), "completed": False}
 
     # get_daily_tasks_data é async, então await diretamente
+    logger.debug(f"CRUD | Task | _create_task_data: Calling get_daily_tasks_data for '{date_str}'.") # Novo log
     daily_data = await get_daily_tasks_data(user_id, date_str)
     tasks = daily_data.get("tasks", [])
+    logger.debug(f"CRUD | Task | _create_task_data: Current tasks for '{date_str}': {tasks}") # Novo log
 
     if any(t.get("description", "").lower() == new_task["description"].lower() and not t.get("completed") for t in tasks):
         logger.warning(f"CRUD | Task | Duplicate create attempt for '{description}' on '{date_str}' for user '{user_id}'.")
@@ -38,18 +37,16 @@ async def _create_task_data(user_id: str, date_str: str, description: str) -> Di
 
     try:
         # save_daily_tasks_data é async, então await diretamente
+        logger.debug(f"CRUD | Task | _create_task_data: Calling save_daily_tasks_data for '{date_str}'.") # Novo log
         await save_daily_tasks_data(user_id, date_str, daily_data)
         logger.info(f"CRUD | Task | Task '{description}' created with ID '{task_id}' on '{date_str}' for user '{user_id}'. Data saved successfully to Firestore.")
         return {"status": "success", "message": f"Tarefa '{description}' adicionada para {date_str}.", "data": {"task_id": task_id}}
     except Exception as e:
-        logger.error(f"CRUD | Task | Failed to write task to Firestore for user '{user_id}' with data {daily_data}: {e}", exc_info=True)
+        logger.critical(f"CRUD | Task | CRITICAL ERROR: Failed to write task to Firestore for user '{user_id}' on '{date_str}'. Payload: {daily_data}. Error: {e}", exc_info=True)
         return {"status": "error", "message": "Falha ao salvar a tarefa no banco de dados.", "data": {}, "debug": str(e)}
 
 async def _update_task_status_or_data(user_id: str, date_str: str, task_id: str, new_completed_status: bool = None, new_description: str = None) -> bool:
-    """
-    Atualiza o status (completed) ou a descrição de uma tarefa existente pelo seu ID.
-    Retorna True se a tarefa for encontrada e atualizada, False caso contrário.
-    """
+    logger.debug(f"CRUD | Task | _update_task_status_or_data: Entered for user '{user_id}', task_id '{task_id}'.") # Novo log
     daily_data = await get_daily_tasks_data(user_id, date_str)
     tasks = daily_data.get("tasks", [])
     task_found = False
@@ -65,6 +62,7 @@ async def _update_task_status_or_data(user_id: str, date_str: str, task_id: str,
 
     if task_found:
         try:
+            logger.debug(f"CRUD | Task | _update_task_status_or_data: Calling save_daily_tasks_data for '{date_str}'.") # Novo log
             await save_daily_tasks_data(user_id, date_str, daily_data)
             logger.info(f"CRUD | Task | Task ID '{task_id}' on '{date_str}' updated for user '{user_id}'. Data updated successfully to Firestore.")
             return True
@@ -76,11 +74,7 @@ async def _update_task_status_or_data(user_id: str, date_str: str, task_id: str,
     return False
 
 async def _delete_task_by_id(user_id: str, date_str: str, task_id: str) -> bool:
-    """
-    Deleta uma tarefa específica pelo seu ID.
-    Se a deleção resultar em uma lista de tarefas vazia para um dia, o documento do dia é excluído.
-    Retorna True se a tarefa for deletada, False caso contrário.
-    """
+    logger.debug(f"CRUD | Task | _delete_task_by_id: Entered for user '{user_id}', task_id '{task_id}'.") # Novo log
     daily_data = await get_daily_tasks_data(user_id, date_str)
     tasks = daily_data.get("tasks", [])
     original_len = len(tasks)
@@ -97,6 +91,7 @@ async def _delete_task_by_id(user_id: str, date_str: str, task_id: str) -> bool:
                 logger.info(f"CRUD | Task | Agenda document for '{date_str}' deleted as it became empty for user '{user_id}'.")
             else:
                 daily_data["tasks"] = tasks
+                logger.debug(f"CRUD | Task | _delete_task_by_id: Calling save_daily_tasks_data for '{date_str}'.") # Novo log
                 await save_daily_tasks_data(user_id, date_str, daily_data)
                 logger.info(f"CRUD | Task | Task ID '{task_id}' on '{date_str}' deleted for user '{user_id}'. Agenda updated.")
             return True
@@ -112,10 +107,7 @@ async def _delete_task_by_id(user_id: str, date_str: str, task_id: str) -> bool:
 ALLOWED_PROJECT_UPDATE_FIELDS = {"name", "description", "progress_tags", "deadline", "micro_tasks", "status", "completion_percentage", "expected_energy_level", "priority", "impact_level", "category", "sub_category", "associated_goals", "dependencies", "related_projects", "stakeholders", "notes", "custom_tags"}
 
 async def _create_project_data(user_id: str, project_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Cria um novo projeto com um ID único e o armazena no Firestore.
-    Retorna o status da operação e o ID do novo projeto.
-    """
+    logger.debug(f"CRUD | Project | _create_project_data: Entered for user '{user_id}'. Project name: '{project_data.get('name')}'") # Novo log
     if not project_data.get("name"):
         logger.warning(f"CRUD | Project | Create failed: Project name is mandatory for user '{user_id}'.")
         return {"status": "error", "message": "O nome do projeto é obrigatório.", "data": {}}
@@ -154,19 +146,17 @@ async def _create_project_data(user_id: str, project_data: Dict[str, Any]) -> Di
     }
 
     try:
+        logger.debug(f"CRUD | Project | _create_project_data: Calling save_project_data for project '{project_id}'.") # Novo log
         await save_project_data(user_id, project_id, new_project)
 
         logger.info(f"CRUD | Project | Project '{new_project['name']}' created with ID '{project_id}' for user '{user_id}'. Data saved successfully to Firestore.")
         return {"status": "success", "message": f"Projeto '{new_project['name']}' criado!", "data": {"project_id": project_id}}
     except Exception as e:
-        logger.error(f"CRUD | Project | Failed to write project to Firestore for user '{user_id}' with data {new_project}: {e}", exc_info=True)
+        logger.critical(f"CRUD | Project | CRITICAL ERROR: Failed to write project to Firestore for user '{user_id}' with data {new_project}: {e}", exc_info=True)
         return {"status": "error", "message": "Falha ao salvar o projeto no banco de dados.", "data": {}, "debug": str(e)}
 
 async def _update_project_data(user_id: str, project_id: str, updates: Dict[str, Any]) -> bool:
-    """
-    Atualiza um projeto pelo seu ID, validando os campos de atualização permitidos.
-    Retorna True se o projeto for encontrado e atualizado, False caso contrário.
-    """
+    logger.debug(f"CRUD | Project | _update_project_data: Entered for user '{user_id}', project_id '{project_id}'.") # Novo log
     if not all(key in ALLOWED_PROJECT_UPDATE_FIELDS for key in updates.keys()):
         invalid_fields = [key for key in updates.keys() if key not in ALLOWED_PROJECT_UPDATE_FIELDS]
         logger.warning(f"CRUD | Project | Update attempt for '{project_id}' with invalid fields: {invalid_fields} for user '{user_id}'.")
@@ -184,6 +174,7 @@ async def _update_project_data(user_id: str, project_id: str, updates: Dict[str,
             current_project_data["completed_at"] = None
 
         try:
+            logger.debug(f"CRUD | Project | _update_project_data: Calling save_project_data for project '{project_id}'.") # Novo log
             await save_project_data(user_id, project_id, current_project_data)
             logger.info(f"CRUD | Project | Project '{project_id}' updated for user '{user_id}'. Changes: {list(updates.keys())}. Data updated successfully to Firestore.")
             return True
@@ -195,10 +186,7 @@ async def _update_project_data(user_id: str, project_id: str, updates: Dict[str,
     return False
 
 async def _delete_project_fully(user_id: str, project_id: str) -> bool:
-    """
-    Deleta um projeto completo pelo seu ID.
-    Retorna True se o projeto for deletado, False caso não seja encontrado ou em caso de erro.
-    """
+    logger.debug(f"CRUD | Project | _delete_project_fully: Entered for user '{user_id}', project_id '{project_id}'.") # Novo log
     project_doc_ref = get_project_doc_ref(user_id, project_id)
 
     if await get_project_data(user_id, project_id):
@@ -228,6 +216,9 @@ async def orchestrate_crud_action(payload: Dict[str, Any]) -> Dict[str, Any]:
       "item_id": str (opcional para 'create', obrigatório para 'update'/'delete')
     }
     """
+    # PONTO B: LOG AQUI COMO A PRIMEIRA LINHA DA FUNÇÃO
+    logger.debug(f"CRUD_ORCHESTRATOR_ENTERED | Payload received: {payload}") 
+
     user_id = payload.get('user_id')
     item_type = payload.get('item_type')
     action = payload.get('action')
@@ -235,7 +226,7 @@ async def orchestrate_crud_action(payload: Dict[str, Any]) -> Dict[str, Any]:
     item_id = payload.get('item_id')
 
     debug_info = {"user_id": user_id, "invoked_action": f"{item_type}_{action}", "item_id": item_id}
-    logger.info(f"CRUD | orchestrate_crud_action received: {debug_info}, data: {data}")
+    logger.info(f"CRUD | orchestrate_crud_action received: {debug_info}, data: {data}") # Linha de log original
 
     if not all([user_id, item_type, action]):
         logger.error(f"CRUD | orchestrate_crud_action: Missing required payload fields. Payload: {payload}")
@@ -243,6 +234,7 @@ async def orchestrate_crud_action(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     try:
         if item_type == 'task':
+            logger.debug(f"CRUD | orchestrate_crud_action: Task action '{action}' detected.") # Novo log
             date_str = data.get('date') # Usa 'data'
             if not date_str:
                 logger.error(f"CRUD | Task | Missing date for action '{action}' for user '{user_id}'. Payload data: {data}")
@@ -278,6 +270,7 @@ async def orchestrate_crud_action(payload: Dict[str, Any]) -> Dict[str, Any]:
                 return {"status": "success" if success else "error", "message": message, "data": {}, "debug_info": debug_info}
 
         elif item_type == 'project':
+            logger.debug(f"CRUD | orchestrate_crud_action: Project action '{action}' detected.") # Novo log
             if action == 'create':
                 project_name = data.get("name") # Usa 'data'
                 if not project_name:
@@ -305,5 +298,5 @@ async def orchestrate_crud_action(payload: Dict[str, Any]) -> Dict[str, Any]:
         return {"status": "error", "message": "Ação ou tipo de item não reconhecido.", "data": {}, "debug_info": debug_info}
 
     except Exception as e:
-        logger.error(f"CRUD | Erro inesperado em orchestrate_crud_action para user '{user_id}'. Payload: {payload}: {e}", exc_info=True)
+        logger.critical(f"CRUD | CRITICAL ERROR: Unexpected error in orchestrate_crud_action for user '{user_id}'. Payload: {payload}: {e}", exc_info=True) # Alterado para critical
         return {"status": "error", "message": "Ocorreu um erro interno inesperado ao processar a ação CRUD.", "data": {}, "debug_info": {**debug_info, "exception": str(e)}}
