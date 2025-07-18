@@ -40,7 +40,8 @@ def get_user_subcollection(user_id: str, logical_subcollection_name: str) -> fir
         raise KeyError(f"Subcoleção '{logical_subcollection_name}' não encontrada em SUBCOLLECTIONS_MAP. Nomes válidos: {list(SUBCOLLECTIONS_MAP.keys())}")
 
     subcollection_ref = user_doc_ref.collection(real_name)
-    logger.debug(f"COLLECTIONS_MANAGER | Getting subcollection '{logical_subcollection_name}' as '{real_name}' under user document '{user_id}'. Full path: {subcollection_ref.path}") # Novo log
+    # LINHA MODIFICADA AQUI: subcollection_ref.path -> f"{subcollection_ref.parent.path}/{subcollection_ref.id}"
+    logger.debug(f"COLLECTIONS_MANAGER | Getting subcollection '{logical_subcollection_name}' as '{real_name}' under user document '{user_id}'. Full path: {subcollection_ref.parent.path}/{subcollection_ref.id}") # NOVO LOG CORRIGIDO
     return subcollection_ref
 
 def get_task_doc_ref(user_id: str, date_str: str) -> firestore.DocumentReference:

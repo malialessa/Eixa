@@ -2,24 +2,26 @@
 functions-framework==3.*
 Flask[async]==2.3.3
 Flask-Cors==4.0.0
+
+# == HTTP Client ==
 httpx==0.27.0
 
-# == Firebase e Firestore ==
+# == Firebase e Google Cloud ==
 firebase-admin==6.2.0
 google-cloud-firestore>=2.10.0
 google-cloud-storage>=2.10.0
-
-# == Geração de Conteúdo e IA (Vertex AI/Gemini) ==
-vertexai==1.49.0
 google-cloud-translate==3.11.0
 
-# == Processamento de Dados Multimídia e Texto ==
+# == IA e Vertex AI ==
+vertexai==1.49.0
+
+# == Processamento de Arquivos e Texto ==
 PyMuPDF==1.23.25
 python-docx==1.1.0
 Pillow==10.1.0
 PyYAML==6.0.1
 
-# == Utilidades e Processamento de Linguagem Natural (NLP) ==
+# == NLP e Utilidades ==
 dateparser==1.2.0
 numpy==1.26.4
 scikit-learn==1.4.1.post1
@@ -29,8 +31,12 @@ pytz>=2023.3
 html5lib==1.1
 bleach==6.1.0
 
-# == Dependências Cloud Run ==
+# == Build e Compatibilidade Cloud Run ==
 setuptools>=65.5.0
 
-# == Removido OpenTelemetry para resolver falha de deploy ==
-# Se a instrumentação for necessária no futuro, investigue a compatibilidade de versões ou a desativação da auto-instrumentação do Cloud Run via variável de ambiente GOOGLE_CLOUD_DISABLE_AUTO_INSTRUMENTATION.
+# == Telemetria (corrige erro crítico de inicialização no Cloud Run) ==
+opentelemetry-api==1.25.0
+opentelemetry-sdk==1.25.0
+opentelemetry-instrumentation==0.45b0
+opentelemetry-instrumentation-flask==0.45b0
+opentelemetry-exporter-otlp==1.25.0
