@@ -52,13 +52,14 @@ async def save_daily_tasks_data(user_id: str, date_str: str, data: dict):
         await asyncio.to_thread(doc_ref.set, data)
         logger.info(f"EIXA_DATA | Daily tasks for user '{user_id}' on '{date_str}' saved to Firestore successfully.")
     except Exception as e:
-        logger.critical(f"EIXA_DATA | CRITICAL ERROR: Failed to save daily tasks to Firestore for user '{user_id}' on '{date_str}'. Payload: {data}. Error: {e}", exc_info=True)
-        raise
+        # AQUI É A MUDANÇA: Log Critical Error e raise para que o erro seja propagado
+        logger.critical(f"EIXA_DATA | CRITICAL ERROR: Failed to save daily tasks to Firestore for user '{user_id}' on '{date_str}'. Doc Path: {doc_ref.path}. Payload: {data}. Error: {e}", exc_info=True)
+        raise # Re-raise a exceção para que o orchestrator saiba que falhou
 
 async def get_all_daily_tasks(user_id: str) -> dict:
     agenda_ref = get_user_subcollection(user_id, 'agenda')
     # CORREÇÃO: Usar .id para CollectionReference (não tem .path)
-    logger.debug(f"EIXA_DATA | Attempting to retrieve all daily tasks for user '{user_id}' from collection ID: {agenda_ref.id}")
+    logger.debug(f"EIXA_DATA | Attempting to retrieve all daily tasks for user '{user_id}' from collection ID: {agenda_ref.id}. Full path: {agenda_ref.parent.id}/{agenda_ref.id}") # Adicionado full path para debug
     all_tasks = {}
     try:
         docs = await asyncio.to_thread(lambda: list(agenda_ref.stream()))
@@ -93,13 +94,14 @@ async def save_project_data(user_id: str, project_id: str, data: dict):
         await asyncio.to_thread(doc_ref.set, data)
         logger.info(f"EIXA_DATA | Project '{project_id}' for user '{user_id}' saved to Firestore successfully.")
     except Exception as e:
-        logger.error(f"EIXA_DATA | CRITICAL ERROR: Failed to save project '{project_id}' to Firestore for user '{user_id}': {e}", exc_info=True)
-        raise
+        # AQUI É A MUDANÇA: Log Critical Error e raise para que o erro seja propagado
+        logger.critical(f"EIXA_DATA | CRITICAL ERROR: Failed to save project '{project_id}' to Firestore for user '{user_id}'. Doc Path: {doc_ref.path}. Error: {e}", exc_info=True)
+        raise # Re-raise a exceção para que o orchestrator saiba que falhou
 
 async def get_all_projects(user_id: str) -> list[dict]:
     projects_ref = get_user_subcollection(user_id, 'projects')
     # CORREÇÃO: Usar .id para CollectionReference (não tem .path)
-    logger.debug(f"EIXA_DATA | Attempting to retrieve all projects for user '{user_id}' from collection ID: {projects_ref.id}")
+    logger.debug(f"EIXA_DATA | Attempting to retrieve all projects for user '{user_id}' from collection ID: {projects_ref.id}. Full path: {projects_ref.parent.id}/{projects_ref.id}") # Adicionado full path para debug
     all_projects = []
     try:
         docs = await asyncio.to_thread(lambda: list(projects_ref.stream()))
