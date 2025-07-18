@@ -27,7 +27,7 @@ async def _create_task_data(user_id: str, date_str: str, description: str) -> Di
     logger.debug(f"CRUD | Task | _create_task_data: Calling get_daily_tasks_data for '{date_str}'.") # Novo log
     daily_data = await get_daily_tasks_data(user_id, date_str)
     tasks = daily_data.get("tasks", [])
-    logger.debug(f"CRUD | Task | _create_task_data: Current tasks for '2026-05-27': {tasks}") # Novo log (corrigido log original que tinha data fixa)
+    logger.debug(f"CRUD | Task | _create_task_data: Current tasks for '{date_str}': {tasks}") # Log corrigido
 
 
     if any(t.get("description", "").lower() == new_task["description"].lower() and not t.get("completed") for t in tasks):
@@ -70,7 +70,8 @@ async def _update_task_status_or_data(user_id: str, date_str: str, task_id: str,
             await save_daily_tasks_data(user_id, date_str, daily_data)
             logger.info(f"CRUD | Task | Task ID '{task_id}' on '{date_str}' updated for user '{user_id}'. Data updated successfully to Firestore.")
             agenda_data = await get_all_daily_tasks(user_id) # Buscar a agenda atualizada
-            return {"status": "success", "message": "Tarefa atualizada com sucesso.", "html_view_data": {"agenda": agenda_data}} # Retornar dict
+            # FIX: Retornar html_view_data também para update
+            return {"status": "success", "message": "Tarefa atualizada com sucesso.", "html_view_data": {"agenda": agenda_data}} 
         except Exception as e:
             logger.error(f"CRUD | Task | Failed to update task in Firestore for user '{user_id}': {e}", exc_info=True)
             return {"status": "error", "message": "Não foi possível atualizar a tarefa."} # Retornar dict
@@ -100,7 +101,8 @@ async def _delete_task_by_id(user_id: str, date_str: str, task_id: str) -> Dict[
                 await save_daily_tasks_data(user_id, date_str, daily_data)
                 logger.info(f"CRUD | Task | Task ID '{task_id}' on '{date_str}' deleted for user '{user_id}'. Agenda updated.")
             agenda_data = await get_all_daily_tasks(user_id) # Buscar a agenda atualizada
-            return {"status": "success", "message": "Tarefa excluída com sucesso.", "html_view_data": {"agenda": agenda_data}} # Retornar dict
+            # FIX: Retornar html_view_data também para delete
+            return {"status": "success", "message": "Tarefa excluída com sucesso.", "html_view_data": {"agenda": agenda_data}} 
         except Exception as e:
             logger.error(f"CRUD | Task | Failed to delete/update agenda document for user '{user_id}' on '{date_str}': {e}", exc_info=True)
             return {"status": "error", "message": "Não foi possível excluir a tarefa."} # Retornar dict
@@ -196,7 +198,8 @@ async def _update_project_data(user_id: str, project_id: str, updates: Dict[str,
             await save_project_data(user_id, project_id, current_project_data)
             logger.info(f"CRUD | Project | Project '{project_id}' updated for user '{user_id}'. Changes: {list(updates.keys())}. Data updated successfully to Firestore.")
             projects_data = await get_all_projects(user_id) # Buscar projetos atualizados
-            return {"status": "success", "message": "Projeto atualizado com sucesso.", "html_view_data": {"projetos": projects_data}} # Retornar dict
+            # FIX: Retornar html_view_data também para update
+            return {"status": "success", "message": "Projeto atualizado com sucesso.", "html_view_data": {"projetos": projects_data}} 
         except Exception as e:
             logger.error(f"CRUD | Project | Failed to update project in Firestore for user '{user_id}': {e}", exc_info=True)
             return {"status": "error", "message": "Não foi possível atualizar o projeto."} # Retornar dict
@@ -214,7 +217,8 @@ async def _delete_project_fully(user_id: str, project_id: str) -> Dict[str, Any]
             await asyncio.to_thread(project_doc_ref.delete)
             logger.info(f"CRUD | Project | Project '{project_id}' deleted for user '{user_id}'.")
             projects_data = await get_all_projects(user_id) # Buscar projetos atualizados
-            return {"status": "success", "message": "Projeto excluído com sucesso.", "html_view_data": {"projetos": projects_data}} # Retornar dict
+            # FIX: Retornar html_view_data também para delete
+            return {"status": "success", "message": "Projeto excluído com sucesso.", "html_view_data": {"projetos": projects_data}} 
         except Exception as e:
             logger.error(f"CRUD | Project | Failed to delete project document '{project_id}' for user '{user_id}': {e}", exc_info=True)
             return {"status": "error", "message": "Não foi possível excluir o projeto."} # Retornar dict

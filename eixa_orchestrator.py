@@ -1,4 +1,3 @@
-# eixa_orchestrator.py
 import logging
 import asyncio
 from datetime import date, datetime, timezone, timedelta
@@ -12,11 +11,11 @@ from memory_utils import (
     get_emotional_memories,
     get_sabotage_patterns,
 )
-from task_manager import parse_and_update_agenda_items, parse_and_update_project_items 
-from eixa_data import get_all_daily_tasks, save_daily_tasks_data, get_project_data, save_project_data, get_user_history, get_all_projects 
+from task_manager import parse_and_update_agenda_items, parse_and_update_project_items
+from eixa_data import get_all_daily_tasks, save_daily_tasks_data, get_project_data, save_project_data, get_user_history, get_all_projects
 
-from vertex_utils import call_gemini_api 
-from vectorstore_utils import get_embedding, add_memory_to_vectorstore, get_relevant_memories 
+from vertex_utils import call_gemini_api
+from vectorstore_utils import get_embedding, add_memory_to_vectorstore, get_relevant_memories
 
 # Importações de firestore_utils para operar com o Firestore
 from firestore_utils import ( # Modified: Added confirmation state functions
@@ -31,17 +30,17 @@ from firestore_utils import ( # Modified: Added confirmation state functions
 from google.cloud import firestore # Importar firestore aqui para usar firestore.DELETE_FIELD
 
 from nudger import analyze_for_nudges
-from user_behavior import track_repetition 
+from user_behavior import track_repetition
 from personal_checkpoint import get_latest_self_eval
 from translation_utils import detect_language, translate_text
 
 import os
 import pytz
 
-from config import DEFAULT_MAX_OUTPUT_TOKENS, DEFAULT_TEMPERATURE, DEFAULT_TIMEZONE, USERS_COLLECTION, TOP_LEVEL_COLLECTIONS_MAP, GEMINI_VISION_MODEL, GEMINI_TEXT_MODEL, EMBEDDING_MODEL_NAME 
+from config import DEFAULT_MAX_OUTPUT_TOKENS, DEFAULT_TEMPERATURE, DEFAULT_TIMEZONE, USERS_COLLECTION, TOP_LEVEL_COLLECTIONS_MAP, GEMINI_VISION_MODEL, GEMINI_TEXT_MODEL, EMBEDDING_MODEL_NAME
 
 from input_parser import parse_incoming_input
-from app_config_loader import get_eixa_templates 
+from app_config_loader import get_eixa_templates
 from crud_orchestrator import orchestrate_crud_action
 from profile_settings_manager import parse_and_update_profile_settings, update_profile_from_inferred_data
 
@@ -57,23 +56,23 @@ async def _extract_crud_intent_with_llm(user_id: str, user_message: str, history
     2.  **PRIORIDADE ABSOLUTA:** Se a mensagem do usuário for uma resposta simples de confirmação ou negação (e.g., "Sim", "Não", "Certo", "Ok", "Por favor", "Deletar!", "Adicionar!", "Cancelar", "Concluir!", "Entendido", "Faça", "Prossiga", "Não quero", "Obrigado", "Bom dia", "Não sei por onde começar", "O que é EIXA?"), **VOCÊ DEVE RETORNAR SOMENTE:**
         ```json
         {
-          "intent_detected": "none"
+        "intent_detected": "none"
         }
         ```
         Não tente interpretar essas mensagens como novas intenções de CRUD. Elas são respostas a uma pergunta anterior.
     3.  Se uma intenção de tarefa ou projeto for detectada **CLARAMENTE** na ÚLTIMA MENSAGEM (e não for uma resposta de confirmação/negação), retorne um JSON com a seguinte estrutura:
         ```json
         {
-          "intent_detected": "task" | "project",
-          "action": "create" | "update" | "delete" | "complete",
-          "item_details": {
+        "intent_detected": "task" | "project",
+        "action": "create" | "update" | "delete" | "complete",
+        "item_details": {
             "id": "ID_DO_ITEM_SE_FOR_UPDATE_OU_DELETE",
             "name": "Nome do projeto ou descrição da tarefa",
             "description": "Descrição detalhada (se projeto) ou descrição da tarefa (se tarefa)",
             "date": "YYYY-MM-DD" | null,
             "status": "open" | "completed" | "in_progress" | null
-          },
-          "confirmation_message": "Você quer que eu adicione 'Comprar pão' para amanhã?"
+        },
+        "confirmation_message": "Você quer que eu adicione 'Comprar pão' para amanhã?"
         }
         ```
         Para datas, sempre use o formato ISO (YYYY-MM-DD). "hoje" -> data atual. "amanhã" -> data atual + 1 dia. "próxima segunda" -> a data da próxima segunda-feira. Se nenhuma data for clara, use `null`.
@@ -86,7 +85,7 @@ async def _extract_crud_intent_with_llm(user_id: str, user_message: str, history
     """
     logger.debug(f"_extract_crud_intent_with_llm: Processing message '{user_message[:50]}...' for CRUD intent.") # Novo log
     llm_history = []
-    for turn in history[-5:]: 
+    for turn in history[-5:]:
         if turn.get("input"):
             llm_history.append({"role": "user", "parts": [{"text": turn.get("input")}]})
         if turn.get("output"):
@@ -120,8 +119,8 @@ async def _extract_crud_intent_with_llm(user_id: str, user_message: str, history
 
 async def orchestrate_eixa_response(user_id: str, user_message: str = None, uploaded_file_data: Dict[str, Any] = None,
                                      view_request: str = None, gcp_project_id: str = None, region: str = None,
-                                     gemini_api_key: str = None, gemini_text_model: str = GEMINI_TEXT_MODEL, 
-                                     gemini_vision_model: str = GEMINI_VISION_MODEL, 
+                                     gemini_api_key: str = None, gemini_text_model: str = GEMINI_TEXT_MODEL,
+                                     gemini_vision_model: str = GEMINI_VISION_MODEL,
                                      firestore_collection_interactions: str = 'interactions',
                                      debug_mode: bool = False) -> Dict[str, Any]:
     
@@ -183,7 +182,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             response_payload["html_view_data"]["agenda"] = agenda_data
             response_payload["response"] = "Aqui estão suas tarefas."
         elif view_request == "projetos":
-            projects_data = await get_all_projects(user_id) 
+            projects_data = await get_all_projects(user_id)
             response_payload["html_view_data"]["projetos"] = projects_data
             response_payload["response"] = "Aqui está a lista dos seus projetos."
         elif view_request == "diagnostico":
@@ -260,7 +259,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             payload_to_execute = confirmation_payload_cache
             
             # PONTO DE DEBUGGING CRÍTICO: Log antes de chamar orchestrate_crud_action
-            logger.debug(f"ORCHESTRATOR | About to call orchestrate_crud_action with payload: {payload_to_execute}") 
+            logger.debug(f"ORCHESTRATOR | About to call orchestrate_crud_action with payload: {payload_to_execute}")
             
             crud_response = await orchestrate_crud_action(payload_to_execute) # Passa o payload completo
             
@@ -298,9 +297,9 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             elif crud_response.get("status") == "duplicate":
                 logger.warning(f"ORCHESTRATOR | CRUD action returned duplicate: {crud_response.get('message')}") # Novo log
                 final_ai_response = crud_response.get("message", "Ação não realizada: item duplicado.")
-                response_payload["status"] = "warning" 
+                response_payload["status"] = "warning"
                 logger.info(f"ORCHESTRATOR | User '{user_id}' confirmed action, but detected as duplicate.")
-            else: 
+            else:
                 logger.error(f"ORCHESTRATOR | CRUD action returned error status: {crud_response}") # Novo log
                 final_ai_response = crud_response.get("message", "Houve um erro ao executar a ação confirmada.")
                 response_payload["status"] = "error"
@@ -324,7 +323,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         elif any(keyword in lower_message for keyword in negative_keywords):
             logger.info(f"ORCHESTRATOR | Confirmation Flow: Negative keyword '{lower_message}' detected. Canceling cached action.")
             final_ai_response = "Ok, entendi. Ação cancelada."
-            response_payload["status"] = "success" 
+            response_payload["status"] = "success"
             
             # MODIFIED: Use clear_confirmation_state from firestore_utils
             try:
@@ -342,7 +341,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         
         else: # Mensagem ambígua em estado de confirmação (re-prompt)
             logger.info(f"ORCHESTRATOR | Confirmation Flow: Ambiguous message '{lower_message}'. Re-prompting.")
-            response_payload["response"] = stored_confirmation_message 
+            response_payload["response"] = stored_confirmation_message
             response_payload["status"] = "awaiting_confirmation"
             if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
             await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
@@ -357,7 +356,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
     input_parser_results = await asyncio.to_thread(parse_incoming_input, user_message_for_processing, uploaded_file_data)
     user_prompt_parts = input_parser_results['prompt_parts_for_gemini']
     gemini_model_override = input_parser_results['gemini_model_override']
-    gemini_final_model = gemini_vision_model if uploaded_file_data else gemini_text_model 
+    gemini_final_model = gemini_vision_model if uploaded_file_data else gemini_text_model
     logger.debug(f"ORCHESTRATOR | Input parsed. Model selected: {gemini_final_model}") # Novo log
 
 
@@ -370,7 +369,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         user_profile = await get_user_profile_data(user_id, user_profile_template_content) # Recarrega o perfil após a atualização
         response_payload["response"] = direct_action_message
         response_payload["status"] = "success"
-        response_payload["debug_info"] = {"intent_detected": "configuracao_perfil", "crud_result_status": "success"} 
+        response_payload["debug_info"] = {"intent_detected": "configuracao_perfil", "crud_result_status": "success"}
         if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
         await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
         return {"response_payload": response_payload} # <--- RETORNO para configuração de perfil
@@ -389,12 +388,12 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         item_type = crud_intent_data['intent_detected']
         action = crud_intent_data['action']
         item_details = crud_intent_data['item_details']
-        llm_generated_confirmation_message = crud_intent_data['confirmation_message'] 
+        llm_generated_confirmation_message = crud_intent_data['confirmation_message']
 
         # Lógica para TAREFAS
         if item_type == 'task':
             task_description = item_details.get("name") or item_details.get("description")
-            task_date = item_details.get("date") 
+            task_date = item_details.get("date")
 
             if action == 'create' and (not task_description or not task_date):
                 response_payload["response"] = "Não consegui extrair todos os detalhes necessários para a tarefa (descrição e data). Por favor, seja mais específico."
@@ -403,7 +402,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
                 return {"response_payload": response_payload}
 
-            corrected_task_date = task_date 
+            corrected_task_date = task_date
             if task_date:
                 try:
                     local_tz = pytz.timezone(user_profile.get('timezone', DEFAULT_TIMEZONE))
@@ -426,7 +425,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
 
             completed_status = True if action == 'complete' else (item_details.get('status') == 'completed' if 'status' in item_details else None)
             
-            provisional_payload_data = {"description": task_description, "date": corrected_task_date} 
+            provisional_payload_data = {"description": task_description, "date": corrected_task_date}
             if completed_status is not None: provisional_payload_data["completed"] = completed_status
             
             provisional_payload = {
@@ -449,12 +448,12 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                     except ValueError as ve_display:
                         logger.warning(f"ORCHESTRATOR | Error formatting corrected_task_date '{corrected_task_date}' for display: {ve_display}. Using raw date.", exc_info=True)
                         confirmation_message = f"Confirma que deseja adicionar a tarefa '{task_description}' para a data especificada ({corrected_task_date})?"
-                else: 
-                     confirmation_message = f"Confirma que deseja adicionar a tarefa '{task_description}'?"
+                else:
+                    confirmation_message = f"Confirma que deseja adicionar a tarefa '{task_description}'?"
             elif action == 'complete': confirmation_message = f"Confirma que deseja marcar a tarefa '{task_description}' como concluída?"
             elif action == 'update': confirmation_message = f"Confirma que deseja atualizar a tarefa '{task_description}'?"
             elif action == 'delete': confirmation_message = f"Confirma que deseja excluir a tarefa '{task_description}'?"
-            else: 
+            else:
                 confirmation_message = llm_generated_confirmation_message or "Confirma esta ação?"
 
         # Lógica para PROJETOS
@@ -474,7 +473,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 "item_id": item_details.get("id"),
                 "data": item_details
             }
-            if not llm_generated_confirmation_message: 
+            if not llm_generated_confirmation_message:
                 if action == 'create': confirmation_message = f"Confirma que deseja criar o projeto '{project_name}'?"
                 elif action == 'update': confirmation_message = f"Confirma que deseja atualizar o projeto '{project_name}'?"
                 elif action == 'delete': confirmation_message = f"Confirma que deseja excluir o projeto '{project_name}'?"
@@ -489,7 +488,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             {
                 'awaiting_confirmation': True,
                 'confirmation_payload_cache': provisional_payload,
-                'confirmation_message': confirmation_message 
+                'confirmation_message': confirmation_message
             }
         )
         logger.info(f"ORCHESTRATOR | LLM inferred {item_type} {action} intent for user '{user_id}'. Awaiting confirmation. Provisional payload: {provisional_payload}")
@@ -529,15 +528,15 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
     # Memória Vetorial (Contextualização de Longo prazo)
     if user_message_for_processing and gcp_project_id and region:
         logger.debug(f"ORCHESTRATOR | Attempting to generate embedding for user query.") # Novo log
-        user_query_embedding = await get_embedding(user_message_for_processing, gcp_project_id, region, model_name=EMBEDDING_MODEL_NAME) 
+        user_query_embedding = await get_embedding(user_message_for_processing, gcp_project_id, region, model_name=EMBEDDING_MODEL_NAME)
         if user_query_embedding:
-            relevant_memories = await get_relevant_memories(user_id, user_query_embedding, n_results=5) 
+            relevant_memories = await get_relevant_memories(user_id, user_query_embedding, n_results=5)
             if relevant_memories:
                 context_string = "\n".join(["--- CONTEXTO DE MEMÓRIAS RELEVANTES DE LONGO PRAZO:"] + [f"- {mem['content']}" for mem in relevant_memories])
                 logger.info(f"ORCHESTRATOR | Adding {len(relevant_memories)} relevant memories to LLM context for user '{user_id}'.")
                 # Insere no início do histórico para dar mais peso
-                conversation_history.insert(0, {"role": "user", "parts": [{"text": context_string}]}) 
-        else: 
+                conversation_history.insert(0, {"role": "user", "parts": [{"text": context_string}]})
+        else:
             logger.warning(f"ORCHESTRATOR | Could not generate embedding for user message. Skipping vector memory retrieval.", exc_info=True)
             debug_info_logs.append("Warning: Embedding generation failed, vector memory not used.")
 
@@ -582,36 +581,36 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
     # Adicionando todos os campos relevantes do perfil de forma legível para o LLM
     if user_profile.get('psychological_profile'):
         psych = user_profile['psychological_profile']
-        if psych.get('personality_traits') and isinstance(psych['personality_traits'], list) and psych['personality_traits']: profile_summary_parts.append(f"  - Traços de Personalidade: {', '.join(psych['personality_traits'])}")
-        if psych.get('diagnoses_and_conditions') and isinstance(psych['diagnoses_and_conditions'], list) and psych['diagnoses_and_conditions']: profile_summary_parts.append(f"  - Condições/Diagnósticos: {', '.join(psych['diagnoses_and_conditions'])}")
-        if psych.get('historical_behavioral_patterns') and isinstance(psych['historical_behavioral_patterns'], list) and psych['historical_behavioral_patterns']: profile_summary_parts.append(f"  - Padrões Comportamentais Históricos: {', '.join(psych['historical_behavioral_patterns'])}")
-        if psych.get('coping_mechanisms') and isinstance(psych['coping_mechanisms'], list) and psych['coping_mechanisms']: profile_summary_parts.append(f"  - Mecanismos de Coping: {', '.join(psych['coping_mechanisms'])}")
+        if psych.get('personality_traits') and isinstance(psych['personality_traits'], list) and psych['personality_traits']: profile_summary_parts.append(f"   - Traços de Personalidade: {', '.join(psych['personality_traits'])}")
+        if psych.get('diagnoses_and_conditions') and isinstance(psych['diagnoses_and_conditions'], list) and psych['diagnoses_and_conditions']: profile_summary_parts.append(f"   - Condições/Diagnósticos: {', '.join(psych['diagnoses_and_conditions'])}")
+        if psych.get('historical_behavioral_patterns') and isinstance(psych['historical_behavioral_patterns'], list) and psych['historical_behavioral_patterns']: profile_summary_parts.append(f"   - Padrões Comportamentais Históricos: {', '.join(psych['historical_behavioral_patterns'])}")
+        if psych.get('coping_mechanisms') and isinstance(psych['coping_mechanisms'], list) and psych['coping_mechanisms']: profile_summary_parts.append(f"   - Mecanismos de Coping: {', '.join(psych['coping_mechanisms'])}")
 
     if user_profile.get('cognitive_style') and isinstance(user_profile['cognitive_style'], list) and user_profile['cognitive_style']:
-        profile_summary_parts.append(f"  - Estilo Cognitivo: {', '.join(user_profile['cognitive_style'])}")
+        profile_summary_parts.append(f"   - Estilo Cognitivo: {', '.join(user_profile['cognitive_style'])}")
 
     if user_profile.get('communication_preferences'):
         comm_pref = user_profile['communication_preferences']
-        if comm_pref.get('tone_preference'): profile_summary_parts.append(f"  - Preferências de Comunicação (Tom): {comm_pref['tone_preference']}")
-        if comm_pref.get('intervention_style'): profile_summary_parts.append(f"  - Preferências de Comunicação (Estilo de Intervenção): {comm_pref['intervention_style']}")
-        if comm_pref.get('specific_no_gos') and isinstance(comm_pref['specific_no_gos'], list) and comm_pref['specific_no_gos']: profile_summary_parts.append(f"  - Regras Específicas para EIXA (NÃO FAZER): {'; '.join(comm_pref['specific_no_gos'])}")
+        if comm_pref.get('tone_preference'): profile_summary_parts.append(f"   - Preferências de Comunicação (Tom): {comm_pref['tone_preference']}")
+        if comm_pref.get('intervention_style'): profile_summary_parts.append(f"   - Preferências de Comunicação (Estilo de Intervenção): {comm_pref['intervention_style']}")
+        if comm_pref.get('specific_no_gos') and isinstance(comm_pref['specific_no_gos'], list) and comm_pref['specific_no_gos']: profile_summary_parts.append(f"   - Regras Específicas para EIXA (NÃO FAZER): {'; '.join(comm_pref['specific_no_gos'])}")
 
     if user_profile.get('current_projects') and isinstance(user_profile['current_projects'], list) and user_profile['current_projects']:
         # Note: current_projects aqui é do perfil, pode ser diferente dos projetos ativos no DB.
         # Ajuste para incluir apenas os nomes, se for o caso.
         project_names_from_profile = [p.get('name', 'N/A') for p in user_profile['current_projects'] if isinstance(p, dict)]
-        if project_names_from_profile: profile_summary_parts.append(f"  - Projetos Atuais (do perfil): {', '.join(project_names_from_profile)}")
+        if project_names_from_profile: profile_summary_parts.append(f"   - Projetos Atuais (do perfil): {', '.join(project_names_from_profile)}")
 
     # Metas (long_term, medium_term, short_term)
     if user_profile.get('goals', {}) and isinstance(user_profile['goals'], dict):
         for term_type in ['long_term', 'medium_term', 'short_term']:
             if user_profile['goals'].get(term_type) and isinstance(user_profile['goals'][term_type], list) and user_profile['goals'][term_type]:
                 goals_text = [g.get('value', 'N/A') for g in user_profile['goals'][term_type] if isinstance(g, dict) and g.get('value')]
-                if goals_text: profile_summary_parts.append(f"  - Metas de {'Longo' if term_type == 'long_term' else 'Médio' if term_type == 'medium_term' else 'Curto'} Prazo: {', '.join(goals_text)}")
+                if goals_text: profile_summary_parts.append(f"   - Metas de {'Longo' if term_type == 'long_term' else 'Médio' if term_type == 'medium_term' else 'Curto'} Prazo: {', '.join(goals_text)}")
 
     if user_profile.get('eixa_interaction_preferences', {}).get('expected_eixa_actions') and isinstance(user_profile['eixa_interaction_preferences']['expected_eixa_actions'], list) and user_profile['eixa_interaction_preferences']['expected_eixa_actions']:
         actions_text = user_profile['eixa_interaction_preferences']['expected_eixa_actions']
-        profile_summary_parts.append(f"  - Ações Esperadas da EIXA: {', '.join(actions_text)}")
+        profile_summary_parts.append(f"   - Ações Esperadas da EIXA: {', '.join(actions_text)}")
     
     # Elementos de rotina diária
     if user_profile.get('daily_routine_elements'):
@@ -637,21 +636,21 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             if alerts_rem.get('overwhelm_triggers') and isinstance(alerts_rem['overwhelm_triggers'], list) and alerts_rem['overwhelm_triggers']: daily_routine_list.append(f"Gatilhos Sobrecarga: {', '.join(alerts_rem['overwhelm_triggers'])}")
             if alerts_rem.get('burnout_indicators') and isinstance(alerts_rem['burnout_indicators'], list) and alerts_rem['burnout_indicators']: daily_routine_list.append(f"Indicadores Burnout: {', '.join(alerts_rem['burnout_indicators'])}")
         
-        if daily_routine_list: profile_summary_parts.append(f"  - Elementos da Rotina Diária: {'; '.join(daily_routine_list)}")
+        if daily_routine_list: profile_summary_parts.append(f"   - Elementos da Rotina Diária: {'; '.join(daily_routine_list)}")
     
     # Adicionar dados de Consentimento
     if user_profile.get('data_usage_consent') is not None:
-        profile_summary_parts.append(f"  - Consentimento de Uso de Dados: {'Concedido' if user_profile['data_usage_consent'] else 'Não Concedido'}")
+        profile_summary_parts.append(f"   - Consentimento de Uso de Dados: {'Concedido' if user_profile['data_usage_consent'] else 'Não Concedido'}")
     
     # Outros campos diretos
-    if user_profile.get('locale'): profile_summary_parts.append(f"  - Localidade: {user_profile['locale']}")
-    if user_profile.get('timezone'): profile_summary_parts.append(f"  - Fuso Horário: {user_profile['timezone']}")
-    if user_profile.get('age_range'): profile_summary_parts.append(f"  - Faixa Etária: {user_profile['age_range']}")
-    if user_profile.get('gender_identity'): profile_summary_parts.append(f"  - Gênero: {user_profile['gender_identity']}")
-    if user_profile.get('education_level'): profile_summary_parts.append(f"  - Nível Educacional: {user_profile['education_level']}")
+    if user_profile.get('locale'): profile_summary_parts.append(f"   - Localidade: {user_profile['locale']}")
+    if user_profile.get('timezone'): profile_summary_parts.append(f"   - Fuso Horário: {user_profile['timezone']}")
+    if user_profile.get('age_range'): profile_summary_parts.append(f"   - Faixa Etária: {user_profile['age_range']}")
+    if user_profile.get('gender_identity'): profile_summary_parts.append(f"   - Gênero: {user_profile['gender_identity']}")
+    if user_profile.get('education_level'): profile_summary_parts.append(f"   - Nível Educacional: {user_profile['education_level']}")
 
 
-    contexto_perfil_str += "\n".join(profile_summary_parts) if profile_summary_parts else "  Nenhum dado de perfil detalhado disponível.\n"
+    contexto_perfil_str += "\n".join(profile_summary_parts) if profile_summary_parts else "   Nenhum dado de perfil detalhado disponível.\n"
     contexto_perfil_str += "--- FIM DO CONTEXTO DE PERFIL ---\n\n"
 
     final_system_instruction = contexto_temporal + contexto_critico + contexto_perfil_str + base_persona_with_name
@@ -671,7 +670,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         response_payload["status"] = "error"
         logger.error(f"ORCHESTRATOR | Gemini response was None or empty for user '{user_id}'. Setting response_payload status to 'error'.", exc_info=True)
     else:
-        profile_update_json = None 
+        profile_update_json = None
         # Tenta extrair um bloco JSON da resposta do LLM para atualização de perfil
         json_match = re.search(r'```json\s*(\{.*?\})\s*```', final_ai_response, re.DOTALL)
         if json_match:
@@ -724,7 +723,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
     logger.info(f"ORCHESTRATOR | Interaction saved for user '{user_id}'. Final response status: {response_payload['status']}.")
 
     # Se o LLM inferiu dados para atualizar o perfil, aplica-os
-    if profile_update_json: 
+    if profile_update_json:
         await update_profile_from_inferred_data(user_id, profile_update_json, user_profile_template_content)
         logger.info(f"ORCHESTRATOR | Profile updated based on LLM inference for user '{user_id}'.")
 
@@ -733,7 +732,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         # Erros de quota para embeddings são logados aqui, mas não impedem o fluxo principal se o embedding não for gerado.
         logger.debug(f"ORCHESTRATOR | Attempting to generate embedding for interaction.") # Novo log
         text_for_embedding = f"User: {user_message_for_processing}\nAI: {final_ai_response}"
-        interaction_embedding = await get_embedding(text_for_embedding, gcp_project_id, region, model_name=EMBEDDING_MODEL_NAME) 
+        interaction_embedding = await get_embedding(text_for_embedding, gcp_project_id, region, model_name=EMBEDDING_MODEL_NAME)
         if interaction_embedding:
             current_utc_timestamp = datetime.now(timezone.utc).isoformat().replace(":", "-").replace(".", "_")
             await add_memory_to_vectorstore(
@@ -792,7 +791,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
 
     # Lógica de "nudges" (sugestões proativas)
     nudge_message = await analyze_for_nudges(
-        user_id, user_message_for_processing, full_history, user_flags_data, 
+        user_id, user_message_for_processing, full_history, user_flags_data,
         user_profile=user_profile
     )
     if nudge_message:
@@ -802,7 +801,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
 
     # A detecção de sabotagem foi chamada antes. A exibição é feita no final, se houver padrões.
     # Filtra padrões que ocorreram 2 ou mais vezes, por exemplo
-    filtered_patterns = {p: f for p, f in sabotage_patterns_detected.items() if f >= 2} 
+    filtered_patterns = {p: f for p, f in sabotage_patterns_detected.items() if f >= 2}
     if filtered_patterns:
         # Adiciona a mensagem de padrões de sabotagem no final da resposta da EIXA
         response_payload["response"] += "\n\n⚠️ **Padrões de auto-sabotagem detectados:**\n" + "\n".join(f"- \"{p}\" ({str(f)} vezes)" for p, f in filtered_patterns.items())
