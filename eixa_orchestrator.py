@@ -40,36 +40,41 @@ from profile_settings_manager import parse_and_update_profile_settings, update_p
 logger = logging.getLogger(__name__)
 
 async def _extract_crud_intent_with_llm(user_id: str, user_message: str, history: list, gemini_api_key: str, gemini_text_model: str) -> dict | None:
+    # IMPORTANTE: Aumentei a rigidez da instrução do sistema para lidar com "Sim", "Não" como "none"
     system_instruction_for_crud_extraction = """
-    Você é um assistente de extração de dados altamente preciso. Sua única função é analisar a última mensagem do usuário,
-    considerando o histórico de conversas e o perfil do usuário, para identificar INTENÇÕES CLARAS de CRIAÇÃO, ATUALIZAÇÃO ou EXCLUSÃO de TAREFAS OU PROJETOS.
+    Você é um assistente de extração de dados altamente preciso e sem vieses. Sua única função é analisar **EXCLUSIVAMENTE a última mensagem do usuário**, ignorando todo o contexto anterior, para identificar INTENÇÕES CLARAS e DIRETAS de CRIAÇÃO, ATUALIZAÇÃO, EXCLUSÃO ou MARCAÇÃO DE CONCLUSÃO (COMPLETE) de TAREFAS OU PROJETOS.
 
-    NÃO converse. SEJA CONCISO. SUA RESPOSTA DEVE SER APENAS UM BLOCO JSON.
+    **REGRAS RÍGIDAS DE SAÍDA:**
+    1.  **SEMPRE** retorne APENAS um bloco JSON, sem texto conversacional.
+    2.  **PRIORIDADE ABSOLUTA:** Se a mensagem do usuário for uma resposta simples de confirmação ou negação (e.g., "Sim", "Não", "Certo", "Ok", "Por favor", "Deletar!", "Adicionar!", "Cancelar", "Concluir!", "Entendido", "Faça", "Prossiga", "Não quero", "Obrigado", "Bom dia", "Não sei por onde começar", "O que é EIXA?"), **VOCÊ DEVE RETORNAR SOMENTE:**
+        ```json
+        {
+          "intent_detected": "none"
+        }
+        ```
+        Não tente interpretar essas mensagens como novas intenções de CRUD. Elas são respostas a uma pergunta anterior.
+    3.  Se uma intenção de tarefa ou projeto for detectada **CLARAMENTE** na ÚLTIMA MENSAGEM (e não for uma resposta de confirmação/negação), retorne um JSON com a seguinte estrutura:
+        ```json
+        {
+          "intent_detected": "task" | "project",
+          "action": "create" | "update" | "delete" | "complete",
+          "item_details": {
+            "id": "ID_DO_ITEM_SE_FOR_UPDATE_OU_DELETE",
+            "name": "Nome do projeto ou descrição da tarefa",
+            "description": "Descrição detalhada (se projeto) ou descrição da tarefa (se tarefa)",
+            "date": "YYYY-MM-DD" | null,
+            "status": "open" | "completed" | "in_progress" | null
+          },
+          "confirmation_message": "Você quer que eu adicione 'Comprar pão' para amanhã?"
+        }
+        ```
+        Para datas, sempre use o formato ISO (YYYY-MM-DD). "hoje" -> data atual. "amanhã" -> data atual + 1 dia. "próxima segunda" -> a data da próxima segunda-feira. Se nenhuma data for clara, use `null`.
+        Sempre prefira extrair a descrição completa e a data/nome mais preciso.
 
-    Se uma intenção de tarefa ou projeto for detectada, retorne um JSON com a seguinte estrutura:
-    ```json
-    {
-      "intent_detected": "task" | "project",
-      "action": "create" | "update" | "delete" | "complete",
-      "item_details": {
-        "id": "ID_DO_ITEM_SE_FOR_UPDATE_OU_DELETE",
-        "name": "Nome do projeto ou descrição da tarefa",
-        "description": "Descrição detalhada (se projeto) ou descrição da tarefa (se tarefa)",
-        "date": "YYYY-MM-DD" | null,
-        "status": "open" | "completed" | "in_progress" | null
-      },
-      "confirmation_message": "Você quer que eu adicione 'Comprar pão' para amanhã?"
-    }
-    ```
-    Se a intenção **NÃO FOR CLARA** para um CRUD de tarefa/projeto, ou se a mensagem for ambígua, retorne SOMENTE:
-    ```json
-    {
-      "intent_detected": "none"
-    }
-    ```
-    Considere sinônimos e variações. Ex: "terminar", "finalizar", "concluir" para "complete" (status). "adicione", "crie", "nova" para "create". "mude", "altere" para "update". "remova", "exclua" para "delete".
-    Para datas, sempre use o formato ISO (YYYY-MM-DD). "hoje" -> data atual. "amanhã" -> data atual + 1 dia. "próxima segunda" -> a data da próxima segunda-feira. Se nenhuma data for clara, use null.
-    Sempre prefira extrair a descrição completa e a data/nome mais preciso.
+    **EXEMPLOS ADICIONAIS DE COMO RETORNAR "none":**
+    - "Qual a sua opinião sobre a vida?" -> `{"intent_detected": "none"}`
+    - "Preciso de ajuda com ansiedade." -> `{"intent_detected": "none"}`
+    - "O que você acha disso?" -> `{"intent_detected": "none"}`
     """
 
     llm_history = []
@@ -87,7 +92,7 @@ async def _extract_crud_intent_with_llm(user_id: str, user_message: str, history
             model_name=gemini_text_model,
             conversation_history=llm_history,
             system_instruction=system_instruction_for_crud_extraction,
-            max_output_tokens=1024,
+            max_output_tokens=1024, # Isso é um limite razoável para JSON de extração
             temperature=0.1
         )
 
@@ -112,67 +117,51 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                                      firestore_collection_interactions: str = 'interactions',
                                      debug_mode: bool = False) -> Dict[str, Any]:
     
-    # Carrega os templates via o novo módulo centralizado
     base_eixa_persona_template_text, user_profile_template_content, user_flags_template_content = get_eixa_templates()
 
     debug_info_logs = []
 
+    # --- 1. Inicialização e Carregamento de Dados Essenciais ---
     try:
+        # Garante que o documento principal do usuário exista
         user_doc_in_eixa_users = await get_firestore_document_data('eixa_user_data', user_id)
         if not user_doc_in_eixa_users:
             logger.info(f"ORCHESTRATOR | Main user document '{user_id}' not found in '{USERS_COLLECTION}'. Creating it.")
             await set_firestore_document(
-                'eixa_user_data',
-                user_id,
+                'eixa_user_data', user_id,
                 {"user_id": user_id, "created_at": datetime.now(timezone.utc).isoformat(), "last_active": datetime.now(timezone.utc).isoformat(), "status": "active"}
             )
-            logger.info(f"ORCHESTRATOR | Main user document created for '{user_id}' in '{USERS_COLLECTION}'.")
         else:
-            logger.debug(f"ORCHESTRATOR | Main user document '{user_id}' already exists in '{USERS_COLLECTION}'.")
+            await set_firestore_document( # Atualiza last_active
+                'eixa_user_data', user_id,
+                {"last_active": datetime.now(timezone.utc).isoformat()}, merge=True
+            )
+        user_profile = await get_user_profile_data(user_id, user_profile_template_content)
+        user_display_name = user_profile.get('name') if user_profile.get('name') else f"Usuário EIXA"
+        eixa_state = user_profile.get('eixa_state', {})
+        is_in_confirmation_state = eixa_state.get('awaiting_confirmation', False)
+        confirmation_payload_cache = eixa_state.get('confirmation_payload_cache', {})
+        stored_confirmation_message = eixa_state.get('confirmation_message', "Aguardando sua confirmação. Por favor, diga 'sim' ou 'não'.")
+        
+        user_flags_data_raw = await get_firestore_document_data('flags', user_id)
+        user_flags_data = user_flags_data_raw.get("behavior_flags", user_flags_template_content) if user_flags_data_raw else user_flags_template_content
+        if not user_flags_data_raw: # Se não existia, salva o template default
+            await set_firestore_document('flags', user_id, {"behavior_flags": user_flags_data})
+
     except Exception as e:
-        logger.critical(f"ORCHESTRATOR | Failed to ensure main user document in '{USERS_COLLECTION}' for '{user_id}': {e}", exc_info=True)
+        logger.critical(f"ORCHESTRATOR | Failed to initialize essential user data for '{user_id}': {e}", exc_info=True)
         response_payload = {"status": "error", "response": f"Erro interno ao inicializar dados do usuário: {e}", "debug_info": {"orchestrator_debug_log": debug_info_logs}}
-        return {"response_payload": response_payload} # <-- CORRIGIDO AQUI
-
-    # Passa o template de perfil para a função que o carrega/cria
-    user_profile = await get_user_profile_data(user_id, user_profile_template_content)
-    # NOVO: Fallback mais amigável se o nome não estiver no perfil
-    user_display_name = user_profile.get('name') if user_profile.get('name') else f"Novo Usuário EIXA" 
-    logger.debug(f"ORCHESTRATOR | User profile loaded for '{user_id}'. Display name: '{user_display_name}'. Profile content keys: {list(user_profile.keys())}")
-
-    eixa_state = user_profile.get('eixa_state', {})
-    is_in_confirmation_state = eixa_state.get('awaiting_confirmation', False)
-    confirmation_payload_cache = eixa_state.get('confirmation_payload_cache', {})
-    stored_confirmation_message = eixa_state.get('confirmation_message', "Aguardando sua confirmação. Por favor, diga 'sim' ou 'não'.")
-
-    # Correct definition and usage of user_flags_data
-    user_flags_data_raw = await get_firestore_document_data('flags', user_id)
-    user_flags_data = user_flags_data_raw.get("behavior_flags", user_flags_template_content) if user_flags_data_raw else user_flags_template_content
-
-    # Se o documento de flags não existia, salva o template default
-    if not user_flags_data_raw:
-        await set_firestore_document('flags', user_id, {"behavior_flags": user_flags_data})
+        return {"response_payload": response_payload}
 
     mode_debug_on = debug_mode or user_flags_data.get("debug_mode", False)
-    if mode_debug_on:
-        debug_info_logs.append("Debug Mode: ON.")
+    if mode_debug_on: debug_info_logs.append("Debug Mode: ON.")
 
     response_payload = {
         "response": "", "suggested_tasks": [], "suggested_projects": [],
         "html_view_data": {}, "status": "success", "language": "pt", "debug_info": {}
     }
 
-    # Determina qual modelo Gemini final será usado (Vision ou Text)
-    gemini_final_model = gemini_vision_model if uploaded_file_data else gemini_text_model 
-
-
-    await set_firestore_document(
-        'eixa_user_data',
-        user_id,
-        {"last_active": datetime.now(timezone.utc).isoformat()},
-        merge=True
-    )
-
+    # --- 2. Processamento de Requisições de Visualização (view_request) ---
     if view_request:
         if view_request == "agenda":
             agenda_data = await get_all_daily_tasks(user_id)
@@ -190,14 +179,12 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             mems_data = await get_emotional_memories(user_id, 10)
             response_payload["html_view_data"]["emotional_memories"] = mems_data
             response_payload["response"] = "Aqui estão suas memórias emocionais recentes."
-            logger.info(f"ORCHESTRATOR | Emotional memories requested and provided for user '{user_id}'.")
         elif view_request == "longTermMemory":
             if user_profile.get('eixa_interaction_preferences', {}).get('display_profile_in_long_term_memory', False):
                 response_payload["html_view_data"]["long_term_memory"] = user_profile
                 response_payload["response"] = "Aqui está seu perfil de memória de longo prazo."
-                logger.info(f"ORCHESTRATOR | Long-term memory (profile) requested and provided for user '{user_id}'.")
             else:
-                response_payload["status"] = "info"
+                response_payload["status"] = "info" # <-- Mantenha status "info" aqui!
                 response_payload["response"] = "A exibição do seu perfil completo na memória de longo prazo está desativada. Se desejar ativá-la, por favor me diga 'mostrar meu perfil'."
                 logger.info(f"ORCHESTRATOR | Long-term memory (profile) requested but display is disabled for user '{user_id}'.")
         else:
@@ -205,16 +192,16 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             response_payload["response"] = "View solicitada inválida."
 
         if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"] = debug_info_logs
-        return {"response_payload": response_payload} # <-- CORRIGIDO AQUI
+        return {"response_payload": response_payload}
 
-     # 1. Mensagem Vazia ou Upload de Arquivo (sem mensagem de texto)
+    # --- 3. Verificação de Mensagem Vazia ---
     if not user_message and not uploaded_file_data:
         response_payload["status"] = "error"
         response_payload["response"] = "Nenhuma mensagem ou arquivo fornecido para interação."
         if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"] = debug_info_logs
         return {"response_payload": response_payload}
 
-    # 2. Tradução da Mensagem (se necessário)
+    # --- 4. Preparação da Mensagem (Idioma, Histórico) ---
     user_input_for_saving = user_message or (uploaded_file_data.get('filename') if uploaded_file_data else "Ação do sistema")
     source_language = await detect_language(user_message or "Olá")
     response_payload["language"] = source_language
@@ -231,7 +218,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
     full_history = await get_user_history(user_id, firestore_collection_interactions, limit=20)
 
 
-    # --- 3. LÓGICA DE CONFIRMAÇÃO PENDENTE (MAIOR PRIORIDADE AQUI!) ---
+    # --- 5. LÓGICA DE CONFIRMAÇÃO PENDENTE (MAIOR PRIORIDADE AQUI!) ---
     # Se o sistema está esperando uma confirmação do usuário.
     if is_in_confirmation_state and confirmation_payload_cache:
         lower_message = user_message_for_processing.lower().strip()
@@ -321,17 +308,17 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             return {"response_payload": response_payload} # <--- RETORNO IMEDIATO PARA RE-PROMPT
 
 
-    # --- 4. Lógica Principal de Inferência (SÓ SERÁ EXECUTADA SE NÃO ESTIVER EM CONFIRMAÇÃO PENDENTE) ---
+    # --- 6. Lógica Principal de Inferência (SÓ SERÁ EXECUTADA SE NÃO ESTIVER EM CONFIRMAÇÃO PENDENTE) ---
     logger.debug(f"ORCHESTRATOR | Not in confirmation state. Proceeding with main inference flow.")
 
-    # 4.1. Processamento de Input para Gemini
+    # 6.1. Processamento de Input para Gemini
     input_parser_results = await asyncio.to_thread(parse_incoming_input, user_message_for_processing, uploaded_file_data)
     user_prompt_parts = input_parser_results['prompt_parts_for_gemini']
     gemini_model_override = input_parser_results['gemini_model_override']
     gemini_final_model = gemini_vision_model if uploaded_file_data else gemini_text_model 
 
 
-    # 4.2. Detecção e Atualização de Configurações de Perfil (Direto)
+    # 6.2. Detecção e Atualização de Configurações de Perfil (Direto)
     profile_settings_results = await parse_and_update_profile_settings(user_id, user_message_for_processing, user_profile_template_content)
     if profile_settings_results.get("profile_updated"):
         direct_action_message = profile_settings_results['action_message']
@@ -343,14 +330,14 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
         return {"response_payload": response_payload} # <--- RETORNO para configuração de perfil
 
-    # 4.3. Extração de Intenções CRUD pela LLM
+    # 6.3. Extração de Intenções CRUD pela LLM
     # A LLM é chamada aqui, pois não estamos em um fluxo de confirmação.
     crud_intent_data = await _extract_crud_intent_with_llm(user_id, user_message_for_processing, full_history, gemini_api_key, gemini_text_model)
     intent_detected_in_orchestrator = crud_intent_data.get("intent_detected", "conversa")
     logger.debug(f"ORCHESTRATOR | LLM intent extraction result: {intent_detected_in_orchestrator}")
 
 
-    # 4.4. Processamento de Intenções CRUD (Task ou Project)
+    # 6.4. Processamento de Intenções CRUD (Task ou Project)
     if intent_detected_in_orchestrator in ["task", "project"]:
         item_type = crud_intent_data['intent_detected']
         action = crud_intent_data['action']
@@ -369,23 +356,18 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
                 return {"response_payload": response_payload}
 
-            corrected_task_date = task_date # LLM já deve ter inferido YYYY-MM-DD
-            # Lógica de correção de ano para datas passadas (se LLM inferir ano errado)
-            if corrected_task_date:
+            corrected_task_date = task_date 
+            if task_date:
                 try:
-                    parsed_date_obj = datetime.strptime(corrected_task_date, "%Y-%m-%d").date()
+                    parsed_date_obj = datetime.strptime(task_date, "%Y-%m-%d").date()
                     current_date_today = datetime.now(timezone.utc).date()
                     
                     if parsed_date_obj < current_date_today:
-                        # Se a data parseada é anterior à data de hoje, tenta ajustar para o ano atual ou próximo.
-                        # Ex: Se hoje é 2025-07-17 e LLM diz 'segunda-feira', parseando para 2024-07-20 (do histórico).
-                        # Ou se LLM diz '16 de julho' e é 17 de julho, LLM pode inferir 2025-07-16.
                         test_next_year = parsed_date_obj.replace(year=current_date_today.year + 1)
-                        if test_next_year >= current_date_today: # Se a data no próximo ano for válida (não no passado ainda)
+                        if test_next_year >= current_date_today:
                             corrected_task_date = test_next_year.isoformat()
                             logger.info(f"ORCHESTRATOR | Task date '{parsed_date_obj}' was in the past. Adjusted to {corrected_task_date} (next year).")
                         else:
-                            # Se mesmo no próximo ano ainda estiver no passado, tenta ano atual (se for o caso de 29 de Fev, por exemplo)
                             test_current_year = parsed_date_obj.replace(year=current_date_today.year)
                             if test_current_year >= current_date_today:
                                 corrected_task_date = test_current_year.isoformat()
@@ -411,7 +393,6 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 if corrected_task_date:
                     try:
                         local_tz = pytz.timezone(user_profile.get('timezone', DEFAULT_TIMEZONE))
-                        # Localiza a data parseada na timezone do usuário, para o dia correto.
                         parsed_date_for_display_naive = datetime.fromisoformat(corrected_task_date)
                         parsed_date_for_display = local_tz.localize(parsed_date_for_display_naive)
                         formatted_date = parsed_date_for_display.strftime("%d de %B de %Y")
@@ -435,7 +416,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 response_payload["status"] = "error"
                 if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
                 await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
-                return {"response_payload": response_payload} # <--- Retorno se projeto sem nome
+                return {"response_payload": response_payload}
 
             provisional_payload = {
                 "item_type": "project",
@@ -604,7 +585,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         response_payload["status"] = "error"
         logger.error(f"ORCHESTRATOR | Gemini response was None or empty for user '{user_id}'. Setting response_payload status to 'error'.", exc_info=True)
     else:
-        profile_update_json = None 
+        profile_update_json = None # <-- CORREÇÃO: Inicializar profile_update_json aqui
         json_match = re.search(r'```json\s*(\{.*?\})\s*```', final_ai_response, re.DOTALL)
         if json_match:
             try:
@@ -653,7 +634,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
     await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
     logger.info(f"ORCHESTRATOR | Interaction saved for user '{user_id}'. Final response status: {response_payload['status']}.")
 
-    if profile_update_json:
+    if profile_update_json: # Este bloco agora está seguro
         await update_profile_from_inferred_data(user_id, profile_update_json, user_profile_template_content)
         logger.info(f"ORCHESTRATOR | Profile updated based on LLM inference for user '{user_id}'.")
 
@@ -724,12 +705,6 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         response_payload["response"] = nudge_message + "\n\n" + response_payload["response"]
         logger.info(f"ORCHESTRATOR | Generated nudge for user '{user_id}': '{nudge_message[:50]}...'.")
 
-    # Re-executar a detecção de padrões de sabotagem após a mensagem principal, se não foi feita antes
-    # ou para garantir que a resposta foi influenciada por ela.
-    # A detecção é chamada em get_sabotage_patterns.
-    # Certifique-se que get_sabotage_patterns é robusto e não depende de histórico *imediatamente* após a interação atual,
-    # mas sim do histórico persistido.
-
     # A detecção de sabotagem foi chamada antes para o LLM. A exibição deve ser feita no final.
     filtered_patterns = {p: f for p, f in sabotage_patterns_detected.items() if f >= 2} # Usa a variável de cima
     if filtered_patterns:
@@ -745,4 +720,4 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         response_payload["debug_info"]["generated_nudge"] = 'true' if nudge_message else 'false'
         response_payload["debug_info"]["system_instruction_snippet"] = final_system_instruction[:500] + "..."
 
-    return {"response_payload": response_payload} # <-- CORRIGIDO AQUI (Último retorno da função)]
+    return {"response_payload": response_payload} # <-- CORRIGIDO AQUI (Último retorno da função)

@@ -60,26 +60,34 @@ async def call_gemini_api(
             if debug_mode:
                 logger.debug(f"Full Gemini API response JSON: {json.dumps(response_json, indent=2)}")
 
+            # --- CORREÇÃO: Tratamento robusto para extrair texto dos candidatos ---
+            generated_text = None # Inicializa generated_text como None por padrão
+            
             if response_json.get('candidates'):
                 first_candidate = response_json['candidates'][0]
                 finish_reason = first_candidate.get('finishReason', 'UNKNOWN')
-                content = first_candidate.get('content', {})
-                # **CORREÇÃO AQUI**: Garantir que parts[0].get('text') é tratado mesmo se for None/vazio
-                generated_text = parts[0].get('text')
                 
-                # A LLM pode terminar com MAX_TOKENS e não gerar nada (generated_text é None ou "").
-                # Vamos logar isso claramente, mas retornar None para o orquestrador tratar.
-                if generated_text is not None and generated_text != "": # Verifica se há texto válido
+                # Garante que 'content' e 'parts' existem e são acessíveis
+                content = first_candidate.get('content', {})
+                parts = content.get('parts', []) # Inicializa parts como uma lista vazia se não existir
+                
+                # Acessa o texto, mas com segurança caso parts esteja vazia ou o texto não exista
+                if parts and len(parts) > 0:
+                    generated_text = parts[0].get('text')
+                else:
+                    logger.warning(f"Gemini API response has candidates but no parts or no text in first part. Finish reason: {finish_reason}. Response: {json.dumps(response_json, indent=2)}")
+
+                if generated_text is not None and generated_text != "": # Verifica se generated_text é string não vazia
                     logger.info(f"Gemini response text extracted successfully (first 100 chars): '{generated_text[:100]}...'")
                     if finish_reason != 'STOP':
                         logger.warning(f"Gemini response finished with reason: {finish_reason}. Appending truncation warning.")
                         generated_text += "\n\n[⚠️ AVISO: A resposta pode estar incompleta, pois o modelo atingiu um limite.]"
                     return generated_text
-                else:
-                    logger.warning(f"Gemini API response has candidates but no text content in parts. Finish reason: {finish_reason}. This indicates the model likely finished due to MAX_TOKENS or generation constraint. Full Response: {json.dumps(response_json, indent=2)}")
+                else: # Se generated_text é None ou vazio após a tentativa de extração
+                    logger.warning(f"Gemini API response has candidates but generated_text is empty or None. Finish reason: {finish_reason}. This indicates the model likely finished due to MAX_TOKENS or generation constraint. Full Response: {json.dumps(response_json, indent=2)}")
                     return None # Retornar None para o orquestrador lidar com a resposta vazia
 
-            else:
+            else: # Se não há 'candidates' (ex: bloqueio de segurança ou erro na resposta da API)
                 safety_ratings = response_json.get('promptFeedback', {}).get('safetyRatings', [])
                 if safety_ratings:
                     logger.warning(f"Gemini API response blocked due to safety. Prompt Feedback: {json.dumps(safety_ratings, indent=2)}")
