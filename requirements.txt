@@ -31,3 +31,15 @@ bleach==6.1.0
 
 # == Dependências Cloud Run ==
 setuptools>=65.5.0
+
+# == Adicionado para resolver o erro de OpenTelemetry no Cloud Run ==
+# Estas versões são exemplos. Recomendo verificar as mais recentes em pypi.org
+# e garantir compatibilidade se você tiver outras bibliotecas que usam OpenTelemetry.
+opentelemetry-api==1.25.0
+opentelemetry-sdk==1.25.0
+opentelemetry-instrumentation==0.45b0
+opentelemetry-instrumentation-httpx==0.45b0 # Importante para httpx, que você usa
+opentelemetry-instrumentation-requests==0.45b0 # Se você usa 'requests' em algum lugar
+opentelemetry-instrumentation-flask==0.45b0 # Para Flask
+opentelemetry-exporter-otlp==1.25.0 # Para exportar traces (se necessário)
+opentelemetry-exporter-otlp-proto-grpc==1.25.0 # Exportador via gRPC
