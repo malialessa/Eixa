@@ -47,41 +47,45 @@ from profile_settings_manager import parse_and_update_profile_settings, update_p
 logger = logging.getLogger(__name__)
 
 async def _extract_crud_intent_with_llm(user_id: str, user_message: str, history: list, gemini_api_key: str, gemini_text_model: str) -> dict | None:
-    # IMPORTANTE: Aumentei a rigidez da instrução do sistema para lidar com "Sim", "Não" como "none"
-    system_instruction_for_crud_extraction = """
+    current_date_utc = datetime.now(timezone.utc).date()
+    current_date_iso = current_date_utc.isoformat()
+    tomorrow_date_iso = (current_date_utc + timedelta(days=1)).isoformat()
+
+    system_instruction_for_crud_extraction = f"""
+    A data atual é {current_date_iso}.
     Você é um assistente de extração de dados altamente preciso e sem vieses. Sua única função é analisar **EXCLUSIVAMENTE a última mensagem do usuário**, ignorando todo o contexto anterior, para identificar INTENÇÕES CLARAS e DIRETAS de CRIAÇÃO, ATUALIZAÇÃO, EXCLUSÃO ou MARCAÇÃO DE CONCLUSÃO (COMPLETE) de TAREFAS OU PROJETOS.
 
     **REGRAS RÍGIDAS DE SAÍDA:**
     1.  **SEMPRE** retorne APENAS um bloco JSON, sem texto conversacional.
     2.  **PRIORIDADE ABSOLUTA:** Se a mensagem do usuário for uma resposta simples de confirmação ou negação (e.g., "Sim", "Não", "Certo", "Ok", "Por favor", "Deletar!", "Adicionar!", "Cancelar", "Concluir!", "Entendido", "Faça", "Prossiga", "Não quero", "Obrigado", "Bom dia", "Não sei por onde começar", "O que é EIXA?"), **VOCÊ DEVE RETORNAR SOMENTE:**
         ```json
-        {
+        {{
         "intent_detected": "none"
-        }
+        }}
         ```
         Não tente interpretar essas mensagens como novas intenções de CRUD. Elas são respostas a uma pergunta anterior.
     3.  Se uma intenção de tarefa ou projeto for detectada **CLARAMENTE** na ÚLTIMA MENSAGEM (e não for uma resposta de confirmação/negação), retorne um JSON com a seguinte estrutura:
         ```json
-        {
+        {{
         "intent_detected": "task" | "project",
         "action": "create" | "update" | "delete" | "complete",
-        "item_details": {
+        "item_details": {{
             "id": "ID_DO_ITEM_SE_FOR_UPDATE_OU_DELETE",
             "name": "Nome do projeto ou descrição da tarefa",
             "description": "Descrição detalhada (se projeto) ou descrição da tarefa (se tarefa)",
             "date": "YYYY-MM-DD" | null,
             "status": "open" | "completed" | "in_progress" | null
-        },
+        }},
         "confirmation_message": "Você quer que eu adicione 'Comprar pão' para amanhã?"
-        }
+        }}
         ```
-        Para datas, sempre use o formato ISO (YYYY-MM-DD). "hoje" -> data atual. "amanhã" -> data atual + 1 dia. "próxima segunda" -> a data da próxima segunda-feira. Se nenhuma data for clara, use `null`.
+        Para datas, sempre use o formato ISO (YYYY-MM-DD). **"hoje" DEVE ser {current_date_iso}. "amanhã" DEVE ser {tomorrow_date_iso}. "próxima segunda" DEVE ser a data da próxima segunda-feira no formato YYYY-MM-DD. Se nenhuma data for clara, use `null`.**
         Sempre prefira extrair a descrição completa e a data/nome mais preciso.
 
     **EXEMPLOS ADICIONAIS DE COMO RETORNAR "none":**
-    - "Qual a sua opinião sobre a vida?" -> `{"intent_detected": "none"}`
-    - "Preciso de ajuda com ansiedade." -> `{"intent_detected": "none"}`
-    - "O que você acha disso?" -> `{"intent_detected": "none"}`
+    - "Qual a sua opinião sobre a vida?" -> `{{ "intent_detected": "none" }}`
+    - "Preciso de ajuda com ansiedade." -> `{{ "intent_detected": "none" }}`
+    - "O que você acha disso?" -> `{{ "intent_detected": "none" }}`
     """
     logger.debug(f"_extract_crud_intent_with_llm: Processing message '{user_message[:50]}...' for CRUD intent.") # Novo log
     llm_history = []
