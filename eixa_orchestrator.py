@@ -207,13 +207,14 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
     response_payload["language"] = source_language
     user_message_for_processing = user_message
     if source_language != 'pt' and user_message:
-        translated_ai_response = await translate_text(user_message, "pt", source_language)
-        if translated_ai_response is None:
+        translated_user_message = await translate_text(user_message, "pt", source_language) # Corrigido aqui
+        if translated_user_message is None:
             response_payload["status"] = "error"
             response_payload["response"] = f"Ocorreu um problema ao traduzir sua mensagem de {source_language}."
             if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"] = debug_info_logs
+            await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
             return {"response_payload": response_payload}
-        user_message_for_processing = translated_ai_response
+        user_message_for_processing = translated_user_message
     
     full_history = await get_user_history(user_id, firestore_collection_interactions, limit=20)
 
@@ -237,6 +238,10 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         if any(keyword in lower_message for keyword in confirmation_keywords):
             logger.info(f"ORCHESTRATOR | Confirmation Flow: Positive keyword '{lower_message}' detected. Attempting to execute cached CRUD.")
             payload_to_execute = confirmation_payload_cache
+            
+            # PONTO DE DEBUGGING CRÍTICO: Log antes de chamar orchestrate_crud_action
+            logger.debug(f"ORCHESTRATOR | Calling orchestrate_crud_action with payload: {payload_to_execute}") 
+            
             crud_response = await orchestrate_crud_action(payload_to_execute) # Passa o payload completo
             
             if crud_response.get("status") == "success":
@@ -476,6 +481,9 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
 
     # Memória Vetorial (Contextualização de Longo prazo)
     if user_message_for_processing and gcp_project_id and region:
+        # Se a cota de embedding está estourada, esta chamada vai falhar.
+        # No entanto, como o usuário pediu para ignorar o erro de cota por enquanto,
+        # a EIXA seguirá sem a memória vetorial.
         user_query_embedding = await get_embedding(user_message_for_processing, gcp_project_id, region, model_name=EMBEDDING_MODEL_NAME) 
         if user_query_embedding:
             relevant_memories = await get_relevant_memories(user_id, user_query_embedding, n_results=5) 
@@ -640,6 +648,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
 
 
     if user_message_for_processing and final_ai_response and gcp_project_id and region:
+        # Erros de quota para embeddings são logados aqui, mas não impedem o fluxo principal se o embedding não for gerado.
         text_for_embedding = f"User: {user_message_for_processing}\nAI: {final_ai_response}"
         interaction_embedding = await get_embedding(text_for_embedding, gcp_project_id, region, model_name=EMBEDDING_MODEL_NAME) 
         if interaction_embedding:
