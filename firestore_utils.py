@@ -13,15 +13,16 @@ async def get_firestore_document_data(logical_collection_name: str, document_id:
     try:
         collection_ref = get_top_level_collection(logical_collection_name)
         db = _initialize_firestore_client_instance()
-        doc = await asyncio.to_thread(db.collection(collection_ref.id).document(document_id).get)
+        # ADIÇÃO: source='SERVER' para forçar leitura fresca
+        doc = await asyncio.to_thread(db.collection(collection_ref.id).document(document_id).get, source='SERVER')
         if doc.exists:
-            logger.debug(f"Document '{document_id}' fetched from collection '{logical_collection_name}'.")
+            logger.debug(f"FIRESTORE_UTILS | Document '{document_id}' fetched from collection '{logical_collection_name}'. Source: SERVER.") # Log atualizado
             return doc.to_dict()
         else:
-            logger.info(f"Document '{document_id}' not found in collection '{logical_collection_name}'.")
+            logger.info(f"FIRESTORE_UTILS | Document '{document_id}' not found in collection '{logical_collection_name}'.")
             return None
     except Exception as e:
-        logger.error(f"Error fetching document '{document_id}' from collection '{logical_collection_name}': {e}", exc_info=True)
+        logger.error(f"FIRESTORE_UTILS | Error fetching document '{document_id}' from collection '{logical_collection_name}': {e}", exc_info=True)
         return None
 
 async def set_firestore_document(logical_collection_name: str, document_id: str, data: dict, merge: bool = False):
@@ -29,9 +30,9 @@ async def set_firestore_document(logical_collection_name: str, document_id: str,
         collection_ref = get_top_level_collection(logical_collection_name)
         db = _initialize_firestore_client_instance()
         await asyncio.to_thread(db.collection(collection_ref.id).document(document_id).set, data, merge=merge)
-        logger.info(f"Document '{document_id}' set in collection '{logical_collection_name}'. Merge: {merge}")
+        logger.info(f"FIRESTORE_UTILS | Document '{document_id}' set in collection '{logical_collection_name}'. Merge: {merge}")
     except Exception as e:
-        logger.error(f"Error setting document '{document_id}' in collection '{logical_collection_name}': {e}", exc_info=True)
+        logger.error(f"FIRESTORE_UTILS | Error setting document '{document_id}' in collection '{logical_collection_name}': {e}", exc_info=True)
         raise
 
 async def delete_firestore_document(logical_collection_name: str, document_id: str):
@@ -39,9 +40,9 @@ async def delete_firestore_document(logical_collection_name: str, document_id: s
         collection_ref = get_top_level_collection(logical_collection_name)
         db = _initialize_firestore_client_instance()
         await asyncio.to_thread(db.collection(collection_ref.id).document(document_id).delete)
-        logger.info(f"Document '{document_id}' deleted from collection '{logical_collection_name}'.")
+        logger.info(f"FIRESTORE_UTILS | Document '{document_id}' deleted from collection '{logical_collection_name}'.")
     except Exception as e:
-        logger.error(f"Error deleting document '{document_id}' from collection '{logical_collection_name}': {e}", exc_info=True)
+        logger.error(f"FIRESTORE_UTILS | Error deleting document '{document_id}' from collection '{logical_collection_name}': {e}", exc_info=True)
         raise
 
 # NOVA FUNÇÃO AUXILIAR: Normaliza a estrutura de goals
@@ -68,12 +69,12 @@ def _normalize_goals_structure(goals_data: dict) -> dict:
                         if first_value:
                             normalized_items.append({"value": str(first_value)})
                         else:
-                            logger.warning(f"Unexpected empty dict in goal item for {term_type}: {item}. Skipping.")
+                            logger.warning(f"FIRESTORE_UTILS | Unexpected empty dict in goal item for {term_type}: {item}. Skipping.") # Log atualizado
                     else:
-                        logger.warning(f"Unexpected goal item format for {term_type}: {item}. Skipping.")
+                        logger.warning(f"FIRESTORE_UTILS | Unexpected goal item format for {term_type}: {item}. Skipping.") # Log atualizado
             normalized_goals[term_type] = normalized_items
         else:
-            logger.warning(f"Goals '{term_type}' is not a list. Skipping normalization.")
+            logger.warning(f"FIRESTORE_UTILS | Goals '{term_type}' is not a list. Skipping normalization.") # Log atualizado
             normalized_goals[term_type] = []
     return normalized_goals
 
@@ -83,10 +84,12 @@ async def get_user_profile_data(user_id: str, user_profile_template_content: dic
     profile_collection_ref = get_top_level_collection('profiles') # Usa 'profiles' -> 'eixa_profiles'
 
     db = _initialize_firestore_client_instance()
-    profile_doc = await asyncio.to_thread(db.collection(profile_collection_ref.id).document(user_id).get)
+    
+    # ADIÇÃO: source='SERVER' para forçar leitura fresca no perfil
+    profile_doc = await asyncio.to_thread(db.collection(profile_collection_ref.id).document(user_id).get, source='SERVER')
 
     if profile_doc.exists:
-        logger.info(f"User profile for '{user_id}' fetched from Firestore in '{profile_collection_ref.id}'.")
+        logger.info(f"FIRESTORE_UTILS | User profile for '{user_id}' fetched from Firestore in '{profile_collection_ref.id}'. Source: SERVER.") # Log atualizado
         current_profile_data = profile_doc.to_dict().get('user_profile', profile_doc.to_dict())
 
         # NOVO: Normaliza a estrutura de 'goals' APÓS CARREGAR do Firestore
@@ -98,10 +101,10 @@ async def get_user_profile_data(user_id: str, user_profile_template_content: dic
 
         return current_profile_data
     else:
-        logger.info(f"User profile for '{user_id}' not found. Creating default profile.")
+        logger.info(f"FIRESTORE_UTILS | User profile for '{user_id}' not found. Creating default profile.") # Log atualizado
 
         if not isinstance(user_profile_template_content, dict):
-            logger.error("Default template para perfil de usuário é inválido (não é um dicionário). Retornando vazio.")
+            logger.error("FIRESTORE_UTILS | Default template para perfil de usuário é inválido (não é um dicionário). Retornando vazio.") # Log atualizado
             return {}
 
         new_profile_content = copy.deepcopy(user_profile_template_content)
@@ -125,10 +128,10 @@ async def get_user_profile_data(user_id: str, user_profile_template_content: dic
         try:
             # Salva o perfil completo dentro de uma sub-chave 'user_profile'
             await asyncio.to_thread(db.collection(profile_collection_ref.id).document(user_id).set, {'user_profile': new_profile_content})
-            logger.info(f"Default user profile created and saved for '{user_id}' in '{profile_collection_ref.id}'.")
+            logger.info(f"FIRESTORE_UTILS | Default user profile created and saved for '{user_id}' in '{profile_collection_ref.id}'.") # Log atualizado
             return new_profile_content
         except Exception as e:
-            logger.error(f"Falha ao criar perfil padrão para o usuário '{user_id}': {e}", exc_info=True)
+            logger.error(f"FIRESTORE_UTILS | Falha ao criar perfil padrão para o usuário '{user_id}': {e}", exc_info=True) # Log atualizado
             return new_profile_content
 
 async def save_interaction(user_id: str, user_input: str, eixa_output: str, language: str, logical_collection_name: str):
@@ -146,6 +149,6 @@ async def save_interaction(user_id: str, user_input: str, eixa_output: str, lang
         }
         db = _initialize_firestore_client_instance()
         await asyncio.to_thread(db.collection(interactions_ref.id).document(doc_id).set, interaction_data)
-        logger.info(f"Interaction saved for user '{user_id}' with ID '{doc_id}'.")
+        logger.info(f"FIRESTORE_UTILS | Interaction saved for user '{user_id}' with ID '{doc_id}'.") # Log atualizado
     except Exception as e:
-        logger.error(f"Error saving interaction for user '{user_id}': {e}", exc_info=True)
+        logger.error(f"FIRESTORE_UTILS | Error saving interaction for user '{user_id}': {e}", exc_info=True)
