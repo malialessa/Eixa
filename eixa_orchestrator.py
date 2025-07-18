@@ -28,7 +28,7 @@ from firestore_utils import ( # Modified: Added confirmation state functions
     set_confirmation_state,    # ADDED THIS
     clear_confirmation_state   # ADDED THIS
 )
-from google.cloud import firestore # Importar firestore aqui para usar firestore.DELETE_FIELD (still used in other files)
+from google.cloud import firestore # Importar firestore aqui para usar firestore.DELETE_FIELD
 
 from nudger import analyze_for_nudges
 from user_behavior import track_repetition 
@@ -235,8 +235,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         user_message_for_processing = translated_user_message
     
     full_history = await get_user_history(user_id, firestore_collection_interactions, limit=20)
-    logger.debug(f"ORCHESTRATOR | Full history retrieved, {len(full_history)} turns.") # Novo log
-
+    logger.debug(f"ORCHESTRATOR | Full history retrieved, {len(full_history)} turns. History for LLM: {full_history[-5:]}") # Novo log
 
     # --- 5. LÓGICA DE CONFIRMAÇÃO PENDENTE (MAIOR PRIORIDADE AQUI!) ---
     # Se o sistema está esperando uma confirmação do usuário.
@@ -275,13 +274,24 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 else: final_ai_response += " O que mais posso fazer por você?"
                 response_payload["status"] = "success"
 
-                # >>> ADIÇÃO CRÍTICA AQUI: RECARREGAR HTML_VIEW_DATA APÓS SUCESSO DE CRUD <<<
-                if payload_to_execute.get('item_type') == 'task':
-                    response_payload["html_view_data"]["agenda"] = await get_all_daily_tasks(user_id)
-                    logger.debug("ORCHESTRATOR | Updated 'agenda' in html_view_data after task CRUD success.")
-                elif payload_to_execute.get('item_type') == 'project':
-                    response_payload["html_view_data"]["projetos"] = await get_all_projects(user_id)
-                    logger.debug("ORCHESTRATOR | Updated 'projetos' in html_view_data after project CRUD success.")
+                # >>> ADIÇÃO CRÍTICA AQUI: INCLUIR DADOS DO HTML_VIEW_DATA DO BACKEND <<<
+                # O backend já retorna os dados da view atualizados no `crud_orchestrator`
+                # Então, `crud_response` pode conter o `html_view_data` se for uma ação CRUD que afeta uma view
+                # Vamos verificar e usar esses dados diretamente
+                if crud_response.get('html_view_data'):
+                    response_payload["html_view_data"] = crud_response["html_view_data"]
+                    logger.debug("ORCHESTRATOR | html_view_data from CRUD response copied to main payload.")
+                else:
+                    # Fallback: Se o crud_orchestrator não retornou dados de view, recarregue a view
+                    # Isso é importante porque o crud_orchestrator em si não necessariamente *sempre*
+                    # retorna o html_view_data, ele se concentra na ação CRUD.
+                    # Mas no eixa_orchestrator, a chamada à API é 'chat_and_view', que pode esperar.
+                    # A lógica do frontend já chama `loadViewData` se `html_view_data` não vier ou se `crud_result_status` for sucesso.
+                    # Mantenha essa lógica de recarga no frontend, mas garanta que o backend NÃO esteja tentando buscar aqui
+                    # Se o `crud_orchestrator` já busca (e ele busca, via `eixa_data`), ele deveria passar.
+                    # Como o `crud_orchestrator` não retorna `html_view_data`, o frontend fará a chamada `loadViewData`.
+                    # Não precisamos replicar a lógica `get_all_daily_tasks` aqui.
+                    pass
                 # >>> FIM DA ADIÇÃO CRÍTICA <<<
 
                 logger.info(f"ORCHESTRATOR | User '{user_id}' confirmed action. CRUD executed successfully.")
@@ -400,18 +410,17 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                     parsed_date_obj = datetime.strptime(task_date, "%Y-%m-%d").date()
                     current_date_today = datetime.now(timezone.utc).date()
                     
+                    # CORREÇÃO PARA DATAS NO PASSADO: Se a data for anterior ao dia de hoje, tenta ajustar para o ano corrente ou próximo
                     if parsed_date_obj < current_date_today:
-                        test_next_year = parsed_date_obj.replace(year=current_date_today.year + 1)
-                        if test_next_year >= current_date_today:
+                        test_current_year = parsed_date_obj.replace(year=current_date_today.year)
+                        if test_current_year >= current_date_today: # Se no ano atual já passou, mas ainda não chegou
+                            corrected_task_date = test_current_year.isoformat()
+                            logger.info(f"ORCHESTRATOR | Task date '{parsed_date_obj}' was in the past. Adjusted to {corrected_task_date} (current year).")
+                        else: # Já passou no ano atual também, tenta o próximo ano
+                            test_next_year = parsed_date_obj.replace(year=current_date_today.year + 1)
                             corrected_task_date = test_next_year.isoformat()
                             logger.info(f"ORCHESTRATOR | Task date '{parsed_date_obj}' was in the past. Adjusted to {corrected_task_date} (next year).")
-                        else:
-                            test_current_year = parsed_date_obj.replace(year=current_date_today.year)
-                            if test_current_year >= current_date_today:
-                                corrected_task_date = test_current_year.isoformat()
-                                logger.info(f"ORCHESTRATOR | Task date '{parsed_date_obj}' was in the past. Adjusted to {corrected_task_date} (current year).")
-                            else:
-                                logger.warning(f"ORCHESTRATOR | Task date '{parsed_date_obj}' from LLM is in the past and cannot be reliably adjusted to future. Using original from LLM as fallback.", exc_info=True)
+
                 except ValueError as ve:
                     logger.warning(f"ORCHESTRATOR | Task date '{corrected_task_date}' from LLM could not be parsed for year correction ({ve}). Using original from LLM as fallback.", exc_info=True)
 
@@ -421,7 +430,8 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             if completed_status is not None: provisional_payload_data["completed"] = completed_status
             
             provisional_payload = {
-                "item_type": "task",
+                "user_id": user_id, # <--- ADICIONADO: Garante que o user_id é passado no payload de confirmação
+                "item_type": item_type,
                 "action": action if action != 'complete' else 'update',
                 "item_id": item_details.get("id"),
                 "data": provisional_payload_data
@@ -431,6 +441,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 if corrected_task_date:
                     try:
                         local_tz = pytz.timezone(user_profile.get('timezone', DEFAULT_TIMEZONE))
+                        # Tenta parsear a data sem fuso horário para display, então localiza
                         parsed_date_for_display_naive = datetime.fromisoformat(corrected_task_date)
                         parsed_date_for_display = local_tz.localize(parsed_date_for_display_naive)
                         formatted_date = parsed_date_for_display.strftime("%d de %B de %Y")
@@ -457,7 +468,8 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 return {"response_payload": response_payload}
 
             provisional_payload = {
-                "item_type": "project",
+                "user_id": user_id, # <--- ADICIONADO: Garante que o user_id é passado no payload de confirmação
+                "item_type": item_type,
                 "action": action,
                 "item_id": item_details.get("id"),
                 "data": item_details
@@ -495,15 +507,19 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         return {"response_payload": response_payload} # <--- RETORNO para intenção CRUD detectada
 
 
-    # --- 5. Lógica de Conversação Genérica com LLM (Se nenhuma intenção específica foi tratada) ---
+    # --- 7. Lógica de Conversação Genérica com LLM (Se nenhuma intenção específica foi tratada) ---
     logger.debug(f"ORCHESTRATOR | Not in confirmation state. Proceeding with main inference flow.")
     
     # Prepara histórico e contexto para a LLM genérica
     conversation_history = []
-    for turn in full_history:
+    # Usar apenas os últimos 5 turnos de interação para o contexto do LLM, conforme debug.
+    # O full_history é retornado do mais recente para o mais antigo, então inverter antes de pegar os últimos 5
+    recent_history_for_llm = full_history[-5:]
+    for turn in recent_history_for_llm:
         if turn.get("input"): conversation_history.append({"role": "user", "parts": [{"text": turn.get("input")}]})
         if turn.get("output"): conversation_history.append({"role": "model", "parts": [{"text": turn.get("output")}]})
-    debug_info_logs.append(f"History prepared with {len(full_history)} turns for LLM context.")
+    debug_info_logs.append(f"History prepared with {len(recent_history_for_llm)} turns for LLM context.")
+
 
     current_datetime_utc = datetime.now(timezone.utc)
     day_names_pt = {0: "segunda-feira", 1: "terça-feira", 2: "quarta-feira", 3: "quinta-feira", 4: "sexta-feira", 5: "sábado", 6: "domingo"}
@@ -512,9 +528,6 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
 
     # Memória Vetorial (Contextualização de Longo prazo)
     if user_message_for_processing and gcp_project_id and region:
-        # Se a cota de embedding está estourada, esta chamada vai falhar.
-        # No entanto, como o usuário pediu para ignorar o erro de cota por enquanto,
-        # a EIXA seguirá sem a memória vetorial.
         logger.debug(f"ORCHESTRATOR | Attempting to generate embedding for user query.") # Novo log
         user_query_embedding = await get_embedding(user_message_for_processing, gcp_project_id, region, model_name=EMBEDDING_MODEL_NAME) 
         if user_query_embedding:
@@ -522,32 +535,51 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             if relevant_memories:
                 context_string = "\n".join(["--- CONTEXTO DE MEMÓRIAS RELEVANTES DE LONGO PRAZO:"] + [f"- {mem['content']}" for mem in relevant_memories])
                 logger.info(f"ORCHESTRATOR | Adding {len(relevant_memories)} relevant memories to LLM context for user '{user_id}'.")
+                # Insere no início do histórico para dar mais peso
                 conversation_history.insert(0, {"role": "user", "parts": [{"text": context_string}]}) 
-        else: logger.warning(f"ORCHESTRATOR | Could not generate embedding for user message. Skipping vector memory retrieval.", exc_info=True)
+        else: 
+            logger.warning(f"ORCHESTRATOR | Could not generate embedding for user message. Skipping vector memory retrieval.", exc_info=True)
+            debug_info_logs.append("Warning: Embedding generation failed, vector memory not used.")
 
+    # Adiciona a mensagem atual do usuário (já processada) ao histórico da conversa para o LLM
     conversation_history.append({"role": "user", "parts": user_prompt_parts})
 
     # Constrói o contexto crítico de tarefas e projetos
     contexto_critico = "--- TAREFAS PENDENTES E PROJETOS ATIVOS DO USUÁRIO ---\n"
     logger.debug(f"ORCHESTRATOR | Fetching all daily tasks and projects for critical context.") # Novo log
     current_tasks = await get_all_daily_tasks(user_id)
-    flat_current_tasks = [task_data for day_data in current_tasks.values() for task_data in day_data.get('tasks', [])]
+    flat_current_tasks = []
+    # Transforma o dicionário de tarefas diárias em uma lista plana para facilitar a leitura pelo LLM
+    for date_key, day_data in current_tasks.items():
+        for task_data in day_data.get('tasks', []):
+            status = 'Concluída' if task_data.get('completed', False) else 'Pendente'
+            flat_current_tasks.append(f"- {task_data.get('description', 'N/A')} (Data: {date_key}, Status: {status})")
+
     current_projects = await get_all_projects(user_id)
+    # Transforma a lista de projetos em uma lista formatada para o LLM
+    formatted_projects = []
+    for project in current_projects:
+        status = project.get('status', 'N/A')
+        deadline = project.get('deadline', 'N/A')
+        formatted_projects.append(f"- {project.get('name', 'N/A')} (Status: {status}, Prazo: {deadline})")
+
 
     if flat_current_tasks:
-        contexto_critico += "Tarefas Pendentes:\n" + "\n".join(f"- {t.get('description', 'N/A')} (Status: {'Concluída' if t.get('completed', False) else 'Pendente'})" for t in flat_current_tasks)
+        contexto_critico += "Tarefas Pendentes:\n" + "\n".join(flat_current_tasks) + "\n"
     else: contexto_critico += "Nenhuma tarefa pendente registrada.\n"
-    if current_projects:
-        contexto_critico += "\nProjetos Ativos:\n" + "\n".join(f"- {p.get('name', 'N/A')} (Status: {p.get('status', 'N/A')})" for p in current_projects)
+    
+    if formatted_projects:
+        contexto_critico += "\nProjetos Ativos:\n" + "\n".join(formatted_projects) + "\n"
     else: contexto_critico += "\nNenhum projeto ativo registrado.\n"
     contexto_critico += "--- FIM DO CONTEXTO CRÍTICO ---\n\n"
     debug_info_logs.append("Critical context generated for LLM.")
 
-    # Constrói o contexto de perfil
+
+    # Constrói o contexto de perfil (detalhado)
     base_persona_with_name = base_eixa_persona_template_text.replace("{{user_display_name}}", user_display_name)
     contexto_perfil_str = f"--- CONTEXTO DO PERFIL DO USUÁRIO ({user_display_name}):\n"
     profile_summary_parts = []
-    # ... (lógica de construção do perfil, como você já tem) ...
+    # Adicionando todos os campos relevantes do perfil de forma legível para o LLM
     if user_profile.get('psychological_profile'):
         psych = user_profile['psychological_profile']
         if psych.get('personality_traits') and isinstance(psych['personality_traits'], list) and psych['personality_traits']: profile_summary_parts.append(f"  - Traços de Personalidade: {', '.join(psych['personality_traits'])}")
@@ -565,24 +597,23 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         if comm_pref.get('specific_no_gos') and isinstance(comm_pref['specific_no_gos'], list) and comm_pref['specific_no_gos']: profile_summary_parts.append(f"  - Regras Específicas para EIXA (NÃO FAZER): {'; '.join(comm_pref['specific_no_gos'])}")
 
     if user_profile.get('current_projects') and isinstance(user_profile['current_projects'], list) and user_profile['current_projects']:
-        project_names = [p.get('name', 'N/A') for p in user_profile['current_projects']]
-        if project_names: profile_summary_parts.append(f"  - Projetos Atuais: {', '.join(project_names)}")
+        # Note: current_projects aqui é do perfil, pode ser diferente dos projetos ativos no DB.
+        # Ajuste para incluir apenas os nomes, se for o caso.
+        project_names_from_profile = [p.get('name', 'N/A') for p in user_profile['current_projects'] if isinstance(p, dict)]
+        if project_names_from_profile: profile_summary_parts.append(f"  - Projetos Atuais (do perfil): {', '.join(project_names_from_profile)}")
 
+    # Metas (long_term, medium_term, short_term)
     if user_profile.get('goals', {}) and isinstance(user_profile['goals'], dict):
-        if user_profile['goals'].get('long_term') and isinstance(user_profile['goals']['long_term'], list) and user_profile['goals']['long_term']:
-            goals_text = [g.get('value', 'N/A') for g in user_profile['goals']['long_term'] if isinstance(g, dict)]
-            if goals_text: profile_summary_parts.append(f"  - Metas de Longo Prazo: {', '.join(goals_text)}")
-        if user_profile['goals'].get('medium_term') and isinstance(user_profile['goals']['medium_term'], list) and user_profile['goals']['medium_term']:
-            goals_text = [g.get('value', 'N/A') for g in user_profile['goals']['medium_term'] if isinstance(g, dict)]
-            if goals_text: profile_summary_parts.append(f"  - Metas de Médio Prazo: {', '.join(goals_text)}")
-        if user_profile['goals'].get('short_term') and isinstance(user_profile['goals']['short_term'], list) and user_profile['goals']['short_term']:
-            goals_text = [g.get('value', 'N/A') for g in user_profile['goals']['short_term'] if isinstance(g, dict)]
-            if goals_text: profile_summary_parts.append(f"  - Metas de Curto Prazo: {', '.join(goals_text)}")
+        for term_type in ['long_term', 'medium_term', 'short_term']:
+            if user_profile['goals'].get(term_type) and isinstance(user_profile['goals'][term_type], list) and user_profile['goals'][term_type]:
+                goals_text = [g.get('value', 'N/A') for g in user_profile['goals'][term_type] if isinstance(g, dict) and g.get('value')]
+                if goals_text: profile_summary_parts.append(f"  - Metas de {'Longo' if term_type == 'long_term' else 'Médio' if term_type == 'medium_term' else 'Curto'} Prazo: {', '.join(goals_text)}")
 
     if user_profile.get('eixa_interaction_preferences', {}).get('expected_eixa_actions') and isinstance(user_profile['eixa_interaction_preferences']['expected_eixa_actions'], list) and user_profile['eixa_interaction_preferences']['expected_eixa_actions']:
         actions_text = user_profile['eixa_interaction_preferences']['expected_eixa_actions']
         profile_summary_parts.append(f"  - Ações Esperadas da EIXA: {', '.join(actions_text)}")
     
+    # Elementos de rotina diária
     if user_profile.get('daily_routine_elements'):
         daily_routine = user_profile['daily_routine_elements']
         daily_routine_list = []
@@ -594,6 +625,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             supps = [f"{s.get('name', 'N/A')} ({s.get('purpose', 'N/A')})" for s in daily_routine['supplements'] if isinstance(s, dict)]
             if supps: daily_routine_list.append(f"Suplementos: {', '.join(supps)}")
 
+        # Alertas e Lembretes
         if daily_routine.get('alerts_and_reminders'):
             alerts_rem = daily_routine['alerts_and_reminders']
             if alerts_rem.get('hydration'): daily_routine_list.append(f"Alerta Hidratação: {alerts_rem['hydration']}")
@@ -606,6 +638,18 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             if alerts_rem.get('burnout_indicators') and isinstance(alerts_rem['burnout_indicators'], list) and alerts_rem['burnout_indicators']: daily_routine_list.append(f"Indicadores Burnout: {', '.join(alerts_rem['burnout_indicators'])}")
         
         if daily_routine_list: profile_summary_parts.append(f"  - Elementos da Rotina Diária: {'; '.join(daily_routine_list)}")
+    
+    # Adicionar dados de Consentimento
+    if user_profile.get('data_usage_consent') is not None:
+        profile_summary_parts.append(f"  - Consentimento de Uso de Dados: {'Concedido' if user_profile['data_usage_consent'] else 'Não Concedido'}")
+    
+    # Outros campos diretos
+    if user_profile.get('locale'): profile_summary_parts.append(f"  - Localidade: {user_profile['locale']}")
+    if user_profile.get('timezone'): profile_summary_parts.append(f"  - Fuso Horário: {user_profile['timezone']}")
+    if user_profile.get('age_range'): profile_summary_parts.append(f"  - Faixa Etária: {user_profile['age_range']}")
+    if user_profile.get('gender_identity'): profile_summary_parts.append(f"  - Gênero: {user_profile['gender_identity']}")
+    if user_profile.get('education_level'): profile_summary_parts.append(f"  - Nível Educacional: {user_profile['education_level']}")
+
 
     contexto_perfil_str += "\n".join(profile_summary_parts) if profile_summary_parts else "  Nenhum dado de perfil detalhado disponível.\n"
     contexto_perfil_str += "--- FIM DO CONTEXTO DE PERFIL ---\n\n"
@@ -627,30 +671,31 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         response_payload["status"] = "error"
         logger.error(f"ORCHESTRATOR | Gemini response was None or empty for user '{user_id}'. Setting response_payload status to 'error'.", exc_info=True)
     else:
-        profile_update_json = None # <-- CORREÇÃO: Inicializar profile_update_json aqui
+        profile_update_json = None 
+        # Tenta extrair um bloco JSON da resposta do LLM para atualização de perfil
         json_match = re.search(r'```json\s*(\{.*?\})\s*```', final_ai_response, re.DOTALL)
         if json_match:
             try:
                 profile_update_json_str = json_match.group(1)
                 profile_update_data = json.loads(profile_update_json_str)
-                profile_update_json = profile_update_data.get('profile_update')
+                profile_update_json = profile_update_data.get('profile_update') # Espera que o JSON tenha uma chave 'profile_update'
 
-                # CORREÇÃO ROBUSTA para remover o JSON da resposta
+                # CORREÇÃO ROBUSTA para remover o JSON da resposta:
                 # Extrai o texto antes e depois do bloco JSON COM os backticks
                 pre_json_text = final_ai_response[:json_match.start()].strip()
                 post_json_text = final_ai_response[json_match.end():].strip()
                 
-                # Reconstrói a resposta sem o bloco JSON
+                # Reconstrói a resposta sem o bloco JSON, garantindo que não haja quebras de linha excessivas
                 final_ai_response = (pre_json_text + "\n\n" + post_json_text).strip()
-                final_ai_response = final_ai_response.replace('\n\n\n', '\n\n') # Limpa quebras de linha triplas
+                final_ai_response = final_ai_response.replace('\n\n\n', '\n\n') # Limpa quebras de linha triplas, se houver
                 
                 logger.info(f"ORCHESTRATOR | Detected profile_update JSON from LLM for user '{user_id}'.")
             except json.JSONDecodeError as e:
                 logger.warning(f"ORCHESTRATOR | Failed to parse profile_update JSON from LLM: {e}. Raw JSON: {json_match.group(1)[:100]}...", exc_info=True)
             except AttributeError as e:
-                logger.warning(f"ORCHESTRATOR | Profile update JSON missing 'profile_update' key: {e}. Raw data: {profile_update_data}", exc_info=True)
+                logger.warning(f"ORCHESTRATOR | Profile update JSON missing 'profile_update' key or has unexpected structure: {e}. Raw data: {profile_update_data}", exc_info=True)
 
-
+        # Tradução da resposta da IA de volta para o idioma original do usuário, se necessário
         if source_language != "pt":
             logger.info(f"ORCHESTRATOR | Translating AI response from 'pt' to '{source_language}' for user '{user_id}'. Original: '{final_ai_response[:50]}...'.")
             translated_ai_response = await translate_text(final_ai_response, source_language, "pt")
@@ -658,6 +703,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             if translated_ai_response is None:
                 logger.error(f"ORCHESTRATOR | Translation of AI response failed for user '{user_id}'. Original PT: '{final_ai_response}'. Target language: '{source_language}'.", exc_info=True)
                 fallback_error_msg_pt = "Ocorreu um problema ao traduzir minha resposta. Por favor, tente novamente."
+                # Tenta traduzir a mensagem de erro de fallback também
                 translated_fallback = await translate_text(fallback_error_msg_pt, source_language, "pt")
                 final_ai_response = translated_fallback if translated_fallback is not None else fallback_error_msg_pt
                 response_payload["status"] = "error"
@@ -668,19 +714,21 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             logger.info(f"ORCHESTRATOR | No translation needed for AI response (source_language is 'pt') for user '{user_id}'.")
 
     response_payload["response"] = final_ai_response
+    # Ajusta o status do payload de resposta se a IA gerou uma mensagem de erro de fallback
     if response_payload["status"] == "success" and ("Não consegui processar sua solicitação" in final_ai_response or "Ocorreu um problema ao traduzir" in final_ai_response):
         response_payload["status"] = "error"
         logger.warning(f"ORCHESTRATOR | Response for user '{user_id}' contained a fallback error message, forcing status to 'error'.")
 
-
+    # Salva a interação completa (input do usuário e output da EIXA) no Firestore
     await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
     logger.info(f"ORCHESTRATOR | Interaction saved for user '{user_id}'. Final response status: {response_payload['status']}.")
 
-    if profile_update_json: # Este bloco agora está seguro
+    # Se o LLM inferiu dados para atualizar o perfil, aplica-os
+    if profile_update_json: 
         await update_profile_from_inferred_data(user_id, profile_update_json, user_profile_template_content)
         logger.info(f"ORCHESTRATOR | Profile updated based on LLM inference for user '{user_id}'.")
 
-
+    # Gera e salva embeddings da interação para memória vetorial
     if user_message_for_processing and final_ai_response and gcp_project_id and region:
         # Erros de quota para embeddings são logados aqui, mas não impedem o fluxo principal se o embedding não for gerado.
         logger.debug(f"ORCHESTRATOR | Attempting to generate embedding for interaction.") # Novo log
@@ -700,6 +748,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         else:
             logger.warning(f"ORCHESTRATOR | Could not generate embedding for interaction for user '{user_id}'. Skipping vector memory saving.", exc_info=True)
 
+    # Lógica de detecção de emoções e padrões de sabotagem para adicionar tags
     emotional_tags = []
     lower_input = user_input_for_saving.lower()
 
@@ -741,20 +790,25 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         await add_emotional_memory(user_id, user_input_for_saving + " | " + final_ai_response, list(set(emotional_tags)))
         logger.info(f"ORCHESTRATOR | Emotional memory for user '{user_id}' with tags {list(set(emotional_tags))} submitted for asynchronous saving.")
 
+    # Lógica de "nudges" (sugestões proativas)
     nudge_message = await analyze_for_nudges(
         user_id, user_message_for_processing, full_history, user_flags_data, 
         user_profile=user_profile
     )
     if nudge_message:
+        # Adiciona a mensagem de nudge no início da resposta da EIXA
         response_payload["response"] = nudge_message + "\n\n" + response_payload["response"]
         logger.info(f"ORCHESTRATOR | Generated nudge for user '{user_id}': '{nudge_message[:50]}...'.")
 
-    # A detecção de sabotagem foi chamada antes para o LLM. A exibição deve ser feita no final.
-    filtered_patterns = {p: f for p, f in sabotage_patterns_detected.items() if f >= 2} # Usa a variável de cima
+    # A detecção de sabotagem foi chamada antes. A exibição é feita no final, se houver padrões.
+    # Filtra padrões que ocorreram 2 ou mais vezes, por exemplo
+    filtered_patterns = {p: f for p, f in sabotage_patterns_detected.items() if f >= 2} 
     if filtered_patterns:
+        # Adiciona a mensagem de padrões de sabotagem no final da resposta da EIXA
         response_payload["response"] += "\n\n⚠️ **Padrões de auto-sabotagem detectados:**\n" + "\n".join(f"- \"{p}\" ({str(f)} vezes)" for p, f in filtered_patterns.items())
         logger.info(f"ORCHESTRATOR | Detected and added {len(filtered_patterns)} sabotage patterns to response for user '{user_id}'.")
 
+    # Adiciona informações de depuração ao payload final, se o modo debug estiver ativado
     if mode_debug_on:
         if "orchestrator_debug_log" not in response_payload["debug_info"]:
             response_payload["debug_info"]["orchestrator_debug_log"] = []
@@ -764,4 +818,4 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         response_payload["debug_info"]["generated_nudge"] = 'true' if nudge_message else 'false'
         response_payload["debug_info"]["system_instruction_snippet"] = final_system_instruction[:500] + "..."
 
-    return {"response_payload": response_payload} # <-- CORRIGIDO AQUI (Último retorno da função)
+    return {"response_payload": response_payload} # <-- Retorno final da função
