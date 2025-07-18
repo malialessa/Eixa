@@ -5,7 +5,8 @@ from datetime import date, datetime, timezone
 from typing import Dict, Any
 
 # ATENÇÃO: eixa_data.py e collections_manager.py devem estar totalmente async
-from eixa_data import get_daily_tasks_data, save_daily_tasks_data, get_project_data, save_project_data
+# FIX: Adicionado get_all_daily_tasks e get_all_projects à importação
+from eixa_data import get_daily_tasks_data, save_daily_tasks_data, get_project_data, save_project_data, get_all_daily_tasks, get_all_projects
 from collections_manager import get_task_doc_ref, get_project_doc_ref
 # NÃO DEVE HAVER IMPORTAÇÃO DE crud_orchestrator AQUI (para evitar ciclo).
 
@@ -26,7 +27,8 @@ async def _create_task_data(user_id: str, date_str: str, description: str) -> Di
     logger.debug(f"CRUD | Task | _create_task_data: Calling get_daily_tasks_data for '{date_str}'.") # Novo log
     daily_data = await get_daily_tasks_data(user_id, date_str)
     tasks = daily_data.get("tasks", [])
-    logger.debug(f"CRUD | Task | _create_task_data: Current tasks for '{date_str}': {tasks}") # Novo log
+    logger.debug(f"CRUD | Task | _create_task_data: Current tasks for '2026-05-27': {tasks}") # Novo log (corrigido log original que tinha data fixa)
+
 
     if any(t.get("description", "").lower() == new_task["description"].lower() and not t.get("completed") for t in tasks):
         logger.warning(f"CRUD | Task | Duplicate create attempt for '{description}' on '{date_str}' for user '{user_id}'.")
