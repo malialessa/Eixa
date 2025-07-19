@@ -10,8 +10,8 @@ from typing import Dict
 logger = logging.getLogger(__name__)
 
 # --- Constantes de Configuração ---
-MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
-MAX_PDF_PAGES = 50  # Limite para evitar abuso de processamento
+MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 # 10 MB
+MAX_PDF_PAGES = 50 # Limite para evitar abuso de processamento
 
 def process_uploaded_file(base64_data: str, filename: str, mimetype: str) -> Dict:
     """
