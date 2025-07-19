@@ -1,71 +1,127 @@
 import base64
+import re
+import io
 import logging
-# Importar bibliotecas para processamento de arquivos específicos (ex: PyPDF2, python-docx, Pillow)
-# from PIL import Image # Exemplo para imagens
-# import io # Exemplo para trabalhar com bytes de arquivo
-# import PyPDF2 # Exemplo para PDFs
-# from docx import Document # Exemplo para DOCX
+from PIL import Image
+import fitz # Importação para PDF (PyMuPDF)
+from docx import Document # Importação para DOCX (python-docx)
+from typing import Dict
 
 logger = logging.getLogger(__name__)
 
-# Tamanho máximo de arquivo permitido (ex: 5MB)
-# Cuidado: Arquivos muito grandes podem exceder limites de memória do Cloud Run ou do Gemini API.
-MAX_FILE_SIZE = 5 * 1024 * 1024 # 5 MB
+# --- Constantes de Configuração ---
+MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
+MAX_PDF_PAGES = 50  # Limite para evitar abuso de processamento
 
-def process_uploaded_file(base64_content: str, filename: str, mimetype: str) -> dict:
+def process_uploaded_file(base64_data: str, filename: str, mimetype: str) -> Dict:
     """
-    Processa o conteúdo de um arquivo enviado (Base64).
-    Retorna um dicionário com o tipo de conteúdo (imagem, texto) e o conteúdo processado.
-    Lança ValueError se o arquivo for muito grande ou o tipo não for suportado.
-    """
-    logger.debug(f"FILE_UTILS | Processando arquivo: '{filename}', MimeType: '{mimetype}'")
+    Processa um arquivo enviado (base64), sanitiza a entrada e extrai o conteúdo relevante.
+    Retorna um dicionário estruturado com tipo, conteúdo e metadados.
 
+    Known Limitations:
+    - PDF Processing: Does not perform Optical Character Recognition (OCR). PDFs containing
+      only scanned images will not yield extractable text.
+    - DOCX Processing: Does not extract images or other embedded objects from DOCX files,
+      only textual content from paragraphs and tables.
+    - File Types: Does not support specialized formats like RAW, SVG, or older .doc files.
+    """
+    if not base64_data:
+        raise ValueError("Dados em base64 não podem estar vazios.")
+
+    # 1. Sanitização: Remove o prefixo 'data:...' comum em uploads de frontend
     try:
-        file_bytes = base64.b64decode(base64_content)
-    except Exception as e:
-        logger.error(f"FILE_UTILS | Erro ao decodificar Base64 para '{filename}': {e}", exc_info=True)
-        raise ValueError("Conteúdo do arquivo inválido (não é um Base64 válido).")
+        base64_clean = re.sub(r'^data:.+;base64,', '', base64_data)
+        decoded_bytes = base64.b64decode(base64_clean)
+        file_size = len(decoded_bytes)
+    except (TypeError, ValueError) as e:
+        logger.error(f"Falha ao decodificar base64 para o arquivo '{filename}': {e}", exc_info=True)
+        raise ValueError("Dados em base64 inválidos ou corrompidos.")
 
-    if len(file_bytes) > MAX_FILE_SIZE:
-        logger.error(f"FILE_UTILS | Arquivo '{filename}' excede o tamanho máximo permitido ({len(file_bytes)} bytes > {MAX_FILE_SIZE} bytes).")
-        raise ValueError(f"O arquivo excede o tamanho máximo permitido de {MAX_FILE_SIZE / (1024 * 1024):.1f} MB.")
+    if file_size > MAX_FILE_SIZE_BYTES:
+        raise ValueError(f"O tamanho do arquivo excede o limite de {MAX_FILE_SIZE_BYTES / (1024*1024):.1f} MB.")
 
+    metadata = {
+        "filename": filename,
+        "size_bytes": file_size,
+        "mime_type": mimetype
+    }
+
+    # 2. Processamento por Tipo de Arquivo
     if mimetype.startswith('image/'):
-        # Para imagens, simplesmente retorna o Base64 original, pois o Gemini API lida com isso.
-        return {
-            "type": "image",
-            "content": {"base64_image": base64_content},
-            "metadata": {"mime_type": mimetype, "filename": filename}
-        }
-    elif mimetype == 'application/pdf':
-        # TODO: Implementar lógica de extração de texto de PDF
-        # Exemplo:
-        # from PyPDF2 import PdfReader
-        # pdf_reader = PdfReader(io.BytesIO(file_bytes))
-        # text_content = ""
-        # for page in pdf_reader.pages:
-        #     text_content += page.extract_text() or ""
-        text_content = f"Conteúdo de PDF simulado para {filename}. (Implementação real de extração de texto necessária)"
-        logger.warning("FILE_UTILS | Extração de texto de PDF não implementada. Usando placeholder.")
-        return {
-            "type": "text",
-            "content": {"text_content": text_content},
-            "metadata": {"mime_type": mimetype, "filename": filename}
-        }
-    elif mimetype == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': # .docx
-        # TODO: Implementar lógica de extração de texto de DOCX
-        # Exemplo:
-        # from docx import Document
-        # doc = Document(io.BytesIO(file_bytes))
-        # text_content = "\n".join([para.text for para in doc.paragraphs])
-        text_content = f"Conteúdo de DOCX simulado para {filename}. (Implementação real de extração de texto necessária)"
-        logger.warning("FILE_UTILS | Extração de texto de DOCX não implementada. Usando placeholder.")
-        return {
-            "type": "text",
-            "content": {"text_content": text_content},
-            "metadata": {"mime_type": mimetype, "filename": filename}
-        }
-    else:
-        logger.error(f"FILE_UTILS | Tipo de arquivo não suportado: '{mimetype}' para '{filename}'.")
-        raise ValueError(f"Tipo de arquivo não suportado: {mimetype}. Apenas imagens, PDFs e DOCX são permitidos.")
+        try:
+            # Apenas verifica se é uma imagem válida sem processar o conteúdo
+            Image.open(io.BytesIO(decoded_bytes))
+            logger.info(f"Arquivo de imagem processado: '{filename}' ({mimetype})")
+            return {
+                'type': 'image',
+                'content': {'base64_image': base64_clean, 'mime_type': mimetype},
+                'metadata': metadata
+            }
+        except Exception as e:
+            logger.error(f"Arquivo de imagem inválido '{filename}': {e}", exc_info=True)
+            raise ValueError(f"Não foi possível processar o arquivo de imagem: {filename}")
 
+    elif mimetype == 'application/pdf':
+        try:
+            doc = fitz.open(stream=decoded_bytes, filetype="pdf")
+            text_content = ""
+            for i, page in enumerate(doc):
+                if i >= MAX_PDF_PAGES:
+                    logger.warning(f"PDF '{filename}' excedeu o limite de {MAX_PDF_PAGES} páginas. Processamento interrompido.")
+                    break
+                text_content += page.get_text("text")
+            doc.close()
+
+            if not text_content.strip():
+                logger.warning(f"PDF '{filename}' não contém texto extraível. Pode ser um arquivo de imagem escaneado ou sem texto selecionável.")
+                return {
+                    'type': 'text',
+                    'content': {'text_content': "[AVISO: O PDF não contém texto legível e pode ser uma imagem escaneada ou sem texto selecionável.]"},
+                    'metadata': metadata
+                }
+
+            logger.info(f"PDF processado: '{filename}', extraídos {len(text_content)} caracteres.")
+            return {
+                'type': 'text',
+                'content': {'text_content': text_content},
+                'metadata': metadata
+            }
+        except Exception as e:
+            logger.error(f"Erro ao processar PDF '{filename}' com PyMuPDF: {e}", exc_info=True)
+            raise ValueError(f"Não foi possível processar o arquivo PDF: {filename}")
+
+    elif mimetype == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+        try:
+            doc = Document(io.BytesIO(decoded_bytes))
+            text_content_parts = []
+            for para in doc.paragraphs:
+                text_content_parts.append(para.text)
+            # Adiciona texto de tabelas, se houver
+            for table in doc.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        text_content_parts.append(cell.text)
+
+            text_content = "\n".join(text_content_parts)
+            
+            if not text_content.strip():
+                logger.warning(f"DOCX '{filename}' não contém texto extraível. Pode ser um arquivo vazio ou com conteúdo não textual.")
+                return {
+                    'type': 'text',
+                    'content': {'text_content': "[AVISO: O DOCX não contém texto legível ou pode estar vazio.]"},
+                    'metadata': metadata
+                }
+
+            logger.info(f"Arquivo DOCX processado: '{filename}', extraídos {len(text_content)} caracteres.")
+            return {
+                'type': 'text',
+                'content': {'text_content': text_content},
+                'metadata': metadata
+            }
+        except Exception as e:
+            logger.error(f"Erro ao processar DOCX '{filename}': {e}", exc_info=True)
+            raise ValueError(f"Não foi possível processar o arquivo DOCX: {filename}")
+
+    else:
+        logger.warning(f"Tipo de arquivo não suportado: '{mimetype}' para o arquivo '{filename}'.")
+        raise ValueError(f"Tipo de arquivo não suportado: {mimetype}. Apenas imagens (JPG/PNG), PDF e DOCX são permitidos.")
