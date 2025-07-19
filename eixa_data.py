@@ -96,7 +96,7 @@ async def save_project_data(user_id: str, project_id: str, data: dict):
 
 async def get_all_projects(user_id: str) -> list[dict]:
     projects_ref = get_user_subcollection(user_id, 'projects')
-    logger.debug(f"EIXA_DATA | get_all_projects: Attempting to retrieve all projects for user '{user_id}' from collection ID: {projects_ref.id}. Full path: {projects_ref.parent.id}/{projects_ref.id}") # Novo log
+    logger.debug(f"EIXA_DATA | get_all_projects: Attempting to retrieve all projects for user '{user_id}' from collection ID: {projects_ref.id}. Full path: {projects_ref.parent.path}/{projects_ref.id}") # Novo log
     all_projects = []
     try:
         docs = await asyncio.to_thread(lambda: list(projects_ref.stream()))
@@ -153,4 +153,5 @@ async def get_user_history(user_id: str, interactions_collection_logical_name: s
         return history
     except Exception as e:
         logger.error(f"EIXA_DATA | get_user_history: Error retrieving user history for '{user_id}' from collection '{interactions_collection_logical_name}': {e}", exc_info=True) # Adicionado para clareza no log
-        return []
+        return [] # Retorna lista vazia em caso de erro
+

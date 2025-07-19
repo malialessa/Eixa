@@ -7,6 +7,7 @@ from google.cloud import firestore
 
 from firestore_client_singleton import _initialize_firestore_client_instance
 from collections_manager import get_top_level_collection
+import eixa_data # Importação necessária para get_user_history, como já estava no seu código.
 
 logger = logging.getLogger(__name__)
 
@@ -91,8 +92,9 @@ def detect_sabotage_patterns(texts: list[str], user_profile: Dict[str, Any]) -> 
 async def get_sabotage_patterns(user_id: str, n: int = 20, user_profile: Dict[str, Any] = None) -> dict:
     logger.debug(f"Analisando últimas {n} interações para padrões de sabotagem do usuário '{user_id}'.")
 
-    from eixa_data import get_user_history
-    history = await get_user_history(user_id, 'interactions', n)
+    # A importação está correta aqui, o que significa que o problema não é o ciclo de importação.
+    # from eixa_data import get_user_history # Já estava no seu código.
+    history = await eixa_data.get_user_history(user_id, 'interactions', n) # Alterei para usar eixa_data.get_user_history
 
     if not history:
         logger.debug(f"Nenhum histórico de interação encontrado para o usuário '{user_id}'.")

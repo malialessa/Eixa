@@ -1,4 +1,3 @@
-# firestore_utils.py
 import logging
 from google.cloud import firestore
 from firestore_client_singleton import _initialize_firestore_client_instance

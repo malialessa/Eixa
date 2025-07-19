@@ -53,3 +53,4 @@ def get_eixa_templates():
         _config_cache["user_profile_template_content"],
         _config_cache["user_flags_template_content"]
     )
+
