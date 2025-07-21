@@ -36,7 +36,6 @@ from firestore_utils import (
     get_confirmation_state,
     set_confirmation_state,
     clear_confirmation_state,
-    set_firestore_document_merge # Adicionada para atualizar partes do documento
 )
 from google.cloud import firestore
 
