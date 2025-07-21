@@ -754,24 +754,3 @@ class GoogleCalendarUtils:
         except Exception as e:
             CALENDAR_UTILS_LOGGER.error(f"Erro inesperado ao deletar evento {event_id} do Google Calendar para {user_id}: {e}", exc_info=True)
             return False
-
-Você está me enviando o `google_calendar_utils.py` com o log de depuração que eu pedi.
-
-**Agora, por favor, gere um NOVO LOG COMPLETO do Cloud Run ao tentar o fluxo de autenticação do Google Calendar (clique em "Sim" na confirmação).**
-
-Precisamos ver as mensagens `DEBUG_OAUTH_CALLBACK` para entender o protocolo da URL (`parsed_url.scheme`) que a biblioteca `oauthlib` está recebendo quando o Google redireciona de volta.
-
-**O objetivo é ver a linha:**
-`DEBUG_OAUTH_CALLBACK | Protocolo da URL de resposta: <valor aqui>`
-
-Se o valor for `http`, mesmo com as configurações de `https://` no Cloud Run e no console do GCP, então o problema é ainda mais cabeludo e pode estar fora do seu controle direto. Mas o log detalhado nos dará a confirmação final.
-
-**Faça o seguinte:**
-
-1.  **Certifique-se de que a sua versão do `google_calendar_utils.py` tem as linhas de log de depuração que adicionei no `handle_oauth2_callback`:**
-    ```python
-            # DEBUG LOG ADICIONAL AQUI
-            CALENDAR_UTILS_LOGGER.debug(f"DEBUG_OAUTH_CALLBACK | Protocolo da URL de resposta: {parsed_url.scheme}")
-            CALENDAR_UTILS_LOGGER.debug(f"DEBUG_OAUTH_CALLBACK | Host da URL de resposta: {parsed_url.netloc}")
-            CALENDAR_UTILS_LOGGER.debug(f"DEBUG_OAUTH_CALLBACK | Caminho da URL de resposta: {parsed_url.path}")
-            CALENDAR_UTILS_LOGGER.debug(f"DEBUG_OAUTH_CALLBACK | Query da URL de resposta: {parsed_url.query}")
