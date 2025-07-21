@@ -14,6 +14,7 @@ google-cloud-storage>=2.10.0
 google-auth # Pacote base de autenticação do Google
 google-auth-oauthlib # <--- VOCÊ PRECISA DESTE!
 google-api-python-client # Essencial para interagir com o Google Calendar API
+requests-oauthlib
 
 # == Geração de Conteúdo e IA (Vertex AI/Gemini) ==
 vertexai==1.49.0
