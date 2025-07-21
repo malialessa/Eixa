@@ -4,27 +4,29 @@ import logging
 import time
 import asyncio
 import functions_framework
-from flask import Flask, request, jsonify, Response, redirect, url_for # ADDED redirect, url_for
+from flask import Flask, request, jsonify, Response, redirect # Removido url_for, pois o redirect será um URL completo
 from flask_cors import CORS
 
 # === Google OAuth Imports ===
-# Estas bibliotecas são essenciais para o fluxo OAuth 2.0 com o Google.
-from google_auth_oauthlib.flow import Flow
-from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request
+# Estas bibliotecas já são importadas e usadas DENTRO de google_calendar_utils.py
+# Não precisamos delas diretamente aqui em main.py se a lógica foi abstraída.
+# from google_auth_oauthlib.flow import Flow
+# from google.oauth2.credentials import Credentials
+# from google.auth.transport.requests import Request
+# Removido firestore para DELETE_FIELD, pois google_calendar_utils já o importa quando necessário.
+# from google.cloud import firestore
 # === END Google OAuth Imports ===
 
 # === EIXA Logic Imports ===
-# Verifique que estes caminhos estão corretos
 from eixa_orchestrator import orchestrate_eixa_response
 from crud_orchestrator import orchestrate_crud_action
-# Importe EIXA_GOOGLE_AUTH_COLLECTION para referência na coleção de credenciais.
-from config import GEMINI_TEXT_MODEL, GEMINI_VISION_MODEL, EIXA_GOOGLE_AUTH_COLLECTION
-# Importe GoogleCalendarUtils e SCOPES para gerenciar credenciais e definir permissões.
-from google_calendar_utils import GoogleCalendarUtils, GOOGLE_CALENDAR_SCOPES
+# Importe apenas o EIXA_GOOGLE_AUTH_COLLECTION se for estritamente necessário aqui,
+# mas geralmente é usado apenas dentro de google_calendar_utils.py
+from config import GEMINI_TEXT_MODEL, GEMINI_VISION_MODEL # Removido EIXA_GOOGLE_AUTH_COLLECTION
+# Agora main.py só precisa importar GoogleCalendarUtils. A instância dela cuidará de tudo.
+from google_calendar_utils import GoogleCalendarUtils
 
 # === Inicialização do Logger ===
-# Mantendo DEBUG para depuração local. Altere para INFO/WARNING em produção.
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -34,33 +36,53 @@ app = Flask(__name__)
 # para os domínios específicos do seu frontend.
 CORS(app)
 
-# === Carregamento de variáveis do ambiente ===
-GCP_PROJECT = os.environ.get("GCP_PROJECT")
-REGION = os.environ.get("REGION", "us-central1")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-
-# === NOVAS VARIÁVEIS DE AMBIENTE PARA GOOGLE OAUTH ===
-# Estas devem ser configuradas no Cloud Run/Functions.
-# GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET são do seu projeto GCP (Credenciais -> OAuth 2.0 Client IDs).
-# GOOGLE_REDIRECT_URI DEVE ser o URL COMPLETO do seu endpoint /oauth2callback (ex: https://<SEU_CLOUD_RUN_URL>/oauth2callback).
-# FRONTEND_URL é o domínio do seu frontend, usado para redirecionamentos após autenticação.
-GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
-GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
-GOOGLE_REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI")
-FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173") # Default para ambiente de dev local
-
-if not GCP_PROJECT:
-    logger.critical("Variável de ambiente 'GCP_PROJECT' não definida. A aplicação pode não funcionar.")
-    raise EnvironmentError("GCP_PROJECT environment variable is not set.")
-if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET or not GOOGLE_REDIRECT_URI:
-    logger.warning("Uma ou mais variáveis de ambiente do Google OAuth (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI) não estão definidas. A integração com o Google Calendar pode não funcionar corretamente.")
-
-logger.info(f"Aplicação EIXA inicializada. GCP Project: {GCP_PROJECT}, Region: {REGION}")
-logger.info(f"Google OAuth Config: Client ID present: {bool(GOOGLE_CLIENT_ID)}, Redirect URI present: {bool(GOOGLE_REDIRECT_URI)}")
+# === Carregamento e Validação de variáveis do ambiente ===
+# Definido como None inicialmente, serão populadas de forma mais segura.
+GCP_PROJECT = None
+REGION = None
+GEMINI_API_KEY = None
+GOOGLE_CLIENT_ID = None
+GOOGLE_CLIENT_SECRET = None
+GOOGLE_REDIRECT_URI = None
+FRONTEND_URL = None
 
 # === Instância do Google Calendar Utils ===
-# Esta instância será usada para interagir com o Firestore para salvar/buscar credenciais.
-google_calendar_utils_instance = GoogleCalendarUtils()
+# Inicializada de forma lazy para garantir que variáveis de ambiente estejam disponíveis.
+google_calendar_utils_instance = None
+
+def _initialize_app_globals():
+    """
+    Inicializa variáveis globais e instâncias de classes que dependem de variáveis de ambiente.
+    Chamado uma vez quando o worker da aplicação inicia.
+    """
+    global GCP_PROJECT, REGION, GEMINI_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI, FRONTEND_URL, google_calendar_utils_instance
+
+    GCP_PROJECT = os.environ.get("GCP_PROJECT")
+    REGION = os.environ.get("REGION", "us-central1")
+    GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+    GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
+    GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
+    GOOGLE_REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI")
+    FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173") # Default para ambiente de dev local
+
+    if not GCP_PROJECT:
+        logger.critical("Variável de ambiente 'GCP_PROJECT' não definida. A aplicação pode não funcionar.")
+        # Em Cloud Run, variáveis de ambiente ausentes no startup levam a falhas de inicialização do container.
+        # Aqui, apenas logamos, mas o container pode reiniciar.
+    if not GEMINI_API_KEY:
+        logger.warning("Variável de ambiente 'GEMINI_API_KEY' não definida. Interações com LLM podem falhar.")
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET or not GOOGLE_REDIRECT_URI or not FRONTEND_URL: # Adicionado FRONTEND_URL à validação
+        logger.warning("Uma ou mais variáveis de ambiente do Google OAuth (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI, FRONTEND_URL) não estão definidas. A integração com o Google Calendar pode não funcionar corretamente.")
+    else:
+        # Inicializa a instância de GoogleCalendarUtils apenas se as variáveis OAuth estiverem presentes
+        google_calendar_utils_instance = GoogleCalendarUtils()
+
+    logger.info(f"Variáveis de ambiente carregadas. GCP Project: {GCP_PROJECT}, Region: {REGION}")
+    logger.info(f"Google OAuth Config: Client ID present: {bool(GOOGLE_CLIENT_ID)}, Redirect URI present: {bool(GOOGLE_REDIRECT_URI)}, Frontend URL present: {bool(FRONTEND_URL)}")
+    logger.info(f"Google Calendar Utils instance ready: {google_calendar_utils_instance is not None}")
+
+# === Chamada para inicializar globais na inicialização do worker ===
+_initialize_app_globals()
 
 @app.before_request
 def log_request_info():
@@ -90,142 +112,67 @@ async def google_auth():
     """
     user_id = request.args.get('user_id')
     if not user_id:
-        logger.error("google_auth: Missing user_id for OAuth initiation.")
+        logger.error("/auth/google: Missing user_id for OAuth initiation.")
         return jsonify({"status": "error", "message": "Parâmetro 'user_id' é obrigatório para iniciar a autenticação Google."}), 400
 
-    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET or not GOOGLE_REDIRECT_URI:
-        logger.critical("Google OAuth environment variables are not set for /auth/google. Cannot proceed with authentication.")
+    if google_calendar_utils_instance is None or not google_calendar_utils_instance.oauth_config_ready:
+        logger.critical("/auth/google: Google OAuth environment variables are not properly set or GoogleCalendarUtils not initialized.")
         return jsonify({"status": "error", "message": "Erro de configuração do servidor para autenticação Google. Contate o suporte."}), 500
 
-    # Configuração do cliente OAuth. `javascript_origins` é crucial para CORS no Google.
-    client_config = {
-        "web": {
-            "client_id": GOOGLE_CLIENT_ID,
-            "client_secret": GOOGLE_CLIENT_SECRET,
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "redirect_uris": [GOOGLE_REDIRECT_URI],
-            "javascript_origins": [FRONTEND_URL] # O domínio do seu frontend
-        }
-    }
-
-    # Cria o objeto Flow para o fluxo de autenticação.
-    flow = Flow.from_client_config(
-        client_config,
-        scopes=GOOGLE_CALENDAR_SCOPES,
-        redirect_uri=GOOGLE_REDIRECT_URI
-    )
-
-    # Gera a URL de autorização. 'state' é para segurança CSRF.
-    # access_type='offline' garante que você obtenha um refresh_token.
-    # include_granted_scopes='true' garante que a URL solicite todos os scopes necessários.
-    authorization_url, state = await asyncio.to_thread(flow.authorization_url, access_type='offline', include_granted_scopes='true')
-    
-    # Armazena o 'state' no Firestore, associado ao user_id, para validação no callback.
-    # ISSO É ESSENCIAL PARA SEGURANÇA. O user_id é o ID do documento.
-    # O Firestore `merge=True` é importante para não sobrescrever outros dados do documento.
     try:
-        doc_ref = google_calendar_utils_instance.db.collection(EIXA_GOOGLE_AUTH_COLLECTION).document(user_id)
-        await asyncio.to_thread(doc_ref.set, {"oauth_state": state}, merge=True)
-        logger.info(f"google_auth: OAuth state '{state}' stored for user '{user_id}'.")
+        # Delega a geração da URL de autorização para GoogleCalendarUtils
+        authorization_url = await google_calendar_utils_instance.get_auth_url(user_id=user_id)
+        
+        if authorization_url:
+            logger.info(f"/auth/google: Generated authorization URL for user {user_id}. Returning URL.")
+            # O frontend DEVE redirecionar o usuário para esta URL.
+            # A URL já inclui o 'state' necessário.
+            return jsonify({"auth_url": authorization_url}), 200
+        else:
+            logger.error(f"/auth/google: Failed to generate authorization URL for user {user_id}. check GoogleCalendarUtils logs for details.")
+            return jsonify({"status": "error", "message": "Não foi possível gerar a URL de autenticação Google."}), 500
     except Exception as e:
-        logger.error(f"google_auth: Failed to save OAuth state for user '{user_id}': {e}", exc_info=True)
-        return jsonify({"status": "error", "message": "Erro interno ao preparar autenticação."}), 500
-
-    logger.info(f"google_auth: Generated authorization URL for user {user_id}. Returning URL.")
-    # Retorna a URL para o frontend. O frontend DEVE redirecionar o usuário para esta URL.
-    return jsonify({"auth_url": authorization_url}), 200
+        logger.critical(f"/auth/google: Unexpected error during OAuth URL generation for user {user_id}: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": "Erro interno ao preparar autenticação Google."}), 500
 
 # === NOVA ROTA: Callback para o Google OAuth ===
 @app.route("/oauth2callback", methods=["GET"])
 async def oauth2callback():
     """
     Recebe o redirecionamento do Google após a autorização do usuário.
-    Troca o 'code' por tokens de acesso e refresh, e os salva no Firestore.
+    Delega o processamento do callback para GoogleCalendarUtils.
+    Redireciona o usuário de volta para o frontend.
     """
-    state = request.args.get('state')
-    code = request.args.get('code')
-    error = request.args.get('error')
+    # capture a URL completa da requisição, que contém todos os parâmetros (code, state, error)
+    authorization_response_url = request.url 
+    logger.info(f"/oauth2callback: Received callback. Full URL: {authorization_response_url}")
 
-    # No fluxo real, o 'user_id' precisa ser recuperado com base no 'state' ou passado de volta pelo frontend.
-    # Por simplicidade e robustez para Cloud Run, vamos assumir que o frontend pode passar o user_id
-    # como um query param adicional na GOOGLE_REDIRECT_URI (ex: https://your.app/oauth2callback?user_id=<user_id>)
-    # Se você não fizer isso, o 'user_id_from_state' abaixo é uma tentativa falha de recuperação segura.
-    # A forma mais robusta é o 'state' conter o 'user_id' e ser validado cryptograficamente.
-    
-    user_id_from_state = None
-    if state:
-        try:
-            db = google_calendar_utils_instance.db
-            # Busca o user_id que corresponde a este state. (Idealmente, isso seria um índice de documento, não uma query de coleção)
-            # Para produção, o `state` deveria ser criptográfico e conter o user_id.
-            docs = await asyncio.to_thread(lambda: list(db.collection(EIXA_GOOGLE_AUTH_COLLECTION).where("oauth_state", "==", state).limit(1).stream()))
-            if docs:
-                user_id_from_state = docs[0].id # O ID do documento é o user_id
-                # Após usar o state, ele deve ser invalidado/removido para evitar reuso.
-                # Remove o campo 'oauth_state' do documento do user_id.
-                doc_ref = db.collection(EIXA_GOOGLE_AUTH_COLLECTION).document(user_id_from_state)
-                await asyncio.to_thread(doc_ref.update, {"oauth_state": firestore.DELETE_FIELD})
-                logger.debug(f"oauth2callback: OAuth state '{state}' removed for user '{user_id_from_state}'.")
-            else:
-                logger.warning(f"oauth2callback: State '{state}' not found in Firestore. Potential CSRF or invalid state.")
-        except Exception as e:
-            logger.error(f"oauth2callback: Error retrieving user_id from state or deleting state: {e}", exc_info=True)
+    if google_calendar_utils_instance is None or not google_calendar_utils_instance.oauth_config_ready:
+        logger.critical("/oauth2callback: GoogleCalendarUtils not initialized or OAuth config not ready.")
+        # Redireciona para o frontend com erro de configuração
+        return redirect(f"{FRONTEND_URL}/dashboard?auth_status=error&message=Erro%20de%20configuração%20do%20servidor")
 
-    # Prioriza o user_id se veio diretamente na URL, senão tenta do state.
-    # O frontend deve ser instruído a adicionar `&user_id=<user_id>` ao final da `GOOGLE_REDIRECT_URI` ao redirecionar.
-    user_id = request.args.get('user_id') or user_id_from_state 
-
-    if error:
-        logger.error(f"oauth2callback: Google OAuth authorization denied or failed for user_id: {user_id}. Error: {error}")
-        return redirect(f"{FRONTEND_URL}/dashboard?auth_status=error&message=Autenticação%20Google%20falhou")
-
-    if not code:
-        logger.error(f"oauth2callback: No authorization code received for user_id: {user_id}")
-        return redirect(f"{FRONTEND_URL}/dashboard?auth_status=error&message=Código%20de%20autorização%20não%20recebido")
-
-    if not user_id:
-        logger.critical("oauth2callback: User ID not identified. Cannot save credentials.")
-        return redirect(f"{FRONTEND_URL}/dashboard?auth_status=error&message=Erro%20interno:%20ID%20de%20usuário%20não%20identificado")
-
-    # Reconstruir o objeto Flow para trocar o código por tokens.
-    client_config = {
-        "web": {
-            "client_id": GOOGLE_CLIENT_ID,
-            "client_secret": GOOGLE_CLIENT_SECRET,
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "redirect_uris": [GOOGLE_REDIRECT_URI],
-            "javascript_origins": [FRONTEND_URL]
-        }
-    }
-    flow = Flow.from_client_config(
-        client_config,
-        scopes=GOOGLE_CALENDAR_SCOPES,
-        redirect_uri=GOOGLE_REDIRECT_URI
-    )
-    # Importante: O redirect_url do objeto flow precisa ser definido para a URL correta do callback
-    flow.redirect_url = GOOGLE_REDIRECT_URI
-    
     try:
-        # Troca o código de autorização por tokens de acesso e refresh.
-        # Esta é uma operação de rede síncrona, deve ser encapsulada em asyncio.to_thread.
-        token_response = await asyncio.to_thread(flow.fetch_token, code=code)
+        # Delega todo o processamento do callback para GoogleCalendarUtils
+        # Ele validará o state, trocará o code por tokens, e salvará.
+        result = await google_calendar_utils_instance.handle_oauth2_callback(authorization_response_url)
         
-        creds = flow.credentials
+        user_id_from_callback = result.get("user_id") # Pega o user_id que foi extraído/validado no utils
         
-        # Salva as credenciais no Firestore para uso futuro pela EIXA.
-        # `creds.to_json()` contém token, refresh_token, token_uri, client_id, client_secret, scopes, etc.
-        await google_calendar_utils_instance._save_credentials(user_id, json.loads(creds.to_json()))
-        
-        logger.info(f"oauth2callback: Successfully obtained and saved Google Calendar credentials for user: {user_id}")
-        # Redireciona o usuário de volta para o frontend com um status de sucesso.
-        return redirect(f"{FRONTEND_URL}/dashboard?auth_status=success&message=Google%20Calendar%20conectado%20com%20sucesso")
+        if result.get("status") == "success":
+            logger.info(f"/oauth2callback: Successfully processed Google Calendar credentials for user: {user_id_from_callback}")
+            # Redireciona o usuário de volta para o frontend com um status de sucesso.
+            # É importante passar o user_id de volta para o frontend se ele precisar.
+            return redirect(f"{FRONTEND_URL}/dashboard?auth_status=success&message=Google%20Calendar%20conectado%20com%20sucesso&user_id={user_id_from_callback or ''}")
+        else:
+            logger.error(f"/oauth2callback: handle_oauth2_callback failed for user {user_id_from_callback}: {result.get('message')}")
+            # Redireciona o usuário de volta para o frontend com um status de erro.
+            return redirect(f"{FRONTEND_URL}/dashboard?auth_status=error&message=Falha%20ao%20conectar%20Google%20Calendar&user_id={user_id_from_callback or ''}")
 
     except Exception as e:
-        logger.critical(f"oauth2callback: Failed to exchange code for tokens or save credentials for user {user_id}: {e}", exc_info=True)
-        # Redireciona o usuário de volta para o frontend com um status de erro.
-        return redirect(f"{FRONTEND_URL}/dashboard?auth_status=error&message=Falha%20ao%20conectar%20Google%20Calendar")
+        logger.critical(f"/oauth2callback: Critical error during OAuth callback processing: {e}", exc_info=True)
+        # Em caso de erro crítico inesperado, redireciona para o frontend com uma mensagem genérica
+        return redirect(f"{FRONTEND_URL}/dashboard?auth_status=error&message=Falha%20crítica%20ao%20conectar%20Google%20Calendar")
 
 # === Rota principal da API (POST e OPTIONS para /interact) ===
 @app.route("/interact", methods=["POST", "OPTIONS"])
@@ -237,11 +184,17 @@ async def interact_api():
     logger.debug("interact_api: Function started.")
 
     headers = {
-        'Access-Control-Allow-Origin': '*', # Em produção, defina o domínio do seu frontend
+        'Access-Control-Allow-Origin': FRONTEND_URL, # Restringir Access-Control-Allow-Origin para o FRONTEND_URL em produção!
         'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization', # CORRIGIDO: Access-Control-Allow-Headers
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
         'Access-Control-Max-Age': '3600'
     }
+    
+    # Se o FRONTEND_URL não estiver definido, mantenha '*' para desenvolvimento local
+    if not FRONTEND_URL:
+        headers['Access-Control-Allow-Origin'] = '*'
+        logger.warning("FRONTEND_URL não definido, usando Access-Control-Allow-Origin: '*' para CORS.")
+
 
     if request.method == 'OPTIONS':
         logger.debug("interact_api: OPTIONS request received.")
@@ -266,6 +219,17 @@ async def interact_api():
         logger.error(f"interact_api: Missing request_type.")
         return jsonify({"status": "error", "response": "O campo 'request_type' é obrigatório."}), 400, headers
 
+    # --- Verificação de dependências globais ---
+    if not GCP_PROJECT:
+        logger.critical("GCP_PROJECT não definido. A aplicação não pode operar.")
+        return jsonify({"status": "error", "response": "Erro de configuração do servidor (GCP_PROJECT ausente)."}), 500, headers
+    if not GEMINI_API_KEY:
+        logger.critical("GEMINI_API_KEY não definido. Interações com LLM não são possíveis.")
+        return jsonify({"status": "error", "response": "Erro de configuração do servidor (Chave Gemini ausente)."}), 500, headers
+    
+    # O eixa_orchestrator já lida com o caso de GoogleCalendarUtils não estar inicializado ou configurado.
+    # Não precisamos de uma verificação adicional aqui que retorne 500.
+
     try:
         if request_type in ['chat_and_view', 'view_data']:
             logger.debug(f"interact_api: Calling orchestrate_eixa_response for request_type: {request_type}")
@@ -282,6 +246,11 @@ async def interact_api():
                 firestore_collection_interactions='interactions',
                 debug_mode=debug_mode
             )
+            # NOVO: Se o orchestrator retornou uma URL de redirecionamento OAuth, passe-a.
+            if response_payload.get("google_auth_redirect_url"):
+                logger.info(f"interact_api: Orchestrator returned Google OAuth redirect URL for user {user_id}. Returning to frontend.")
+                return jsonify(response_payload), 200, headers # Retorna o payload com a URL para o frontend
+
         elif request_type == 'crud_action':
             logger.debug(f"interact_api: Calling orchestrate_crud_action for request_type: {request_type}. Payload: {request_json}")
             response_payload = await orchestrate_crud_action(request_json)
@@ -334,21 +303,23 @@ def eixa_entry(request):
 # === Execução local para testes ===
 if __name__ == '__main__':
     # Configura variáveis de ambiente para o ambiente de desenvolvimento local.
-    os.environ["GCP_PROJECT"] = os.environ.get("GCP_PROJECT", "local-dev-project")
-    os.environ["REGION"] = os.environ.get("REGION", "us-central1")
-    os.environ["GEMINI_API_KEY"] = os.environ.get("GEMINI_API_KEY", "YOUR_LOCAL_GEMINI_API_KEY")
+    # Estas devem ser as mesmas que você configurará no Cloud Run.
+    os.environ["GCP_PROJECT"] = os.environ.get("GCP_PROJECT", "arquitetodadivulgacao")
+    os.environ["REGION"] = os.environ.get("REGION", "us-east1")
+    os.environ["GEMINI_API_KEY"] = os.environ.get("GEMINI_API_KEY", "YOUR_LOCAL_GEMINI_API_KEY_HERE")
+    os.environ["FIRESTORE_DATABASE_ID"] = os.environ.get("FIRESTORE_DATABASE_ID", "(default)")
     
-    # Configure estas variáveis com suas próprias credenciais do Google Cloud Console
-    # e a URL de redirecionamento para o seu ambiente local.
-    # Ex: http://localhost:8080/oauth2callback
-    os.environ["GOOGLE_CLIENT_ID"] = os.environ.get("GOOGLE_CLIENT_ID", "YOUR_GOOGLE_CLIENT_ID")
-    os.environ["GOOGLE_CLIENT_SECRET"] = os.environ.get("GOOGLE_CLIENT_SECRET", "YOUR_GOOGLE_CLIENT_SECRET")
+    # === SUAS CREDENCIAIS DE TESTE PARA OAUTH LOCALLY ===
+    # Você precisará criar um OAuth 2.0 Client ID do tipo "Aplicativo da Web" no GCP
+    # para 'http://localhost:8080/oauth2callback' como Redirect URI.
+    os.environ["GOOGLE_CLIENT_ID"] = os.environ.get("GOOGLE_CLIENT_ID", "YOUR_GOOGLE_CLIENT_ID_LOCAL")
+    os.environ["GOOGLE_CLIENT_SECRET"] = os.environ.get("GOOGLE_CLIENT_SECRET", "YOUR_GOOGLE_CLIENT_SECRET_LOCAL")
     os.environ["GOOGLE_REDIRECT_URI"] = os.environ.get("GOOGLE_REDIRECT_URI", "http://localhost:8080/oauth2callback")
-    # URL do frontend para redirecionamentos.
-    os.environ["FRONTEND_URL"] = os.environ.get("FRONTEND_URL", "http://localhost:5173") 
+    os.environ["FRONTEND_URL"] = os.environ.get("FRONTEND_URL", "http://localhost:5173")
     
+    # Inicializa as variáveis globais APENAS uma vez ao rodar o arquivo diretamente
+    _initialize_app_globals()
+
     port = int(os.environ.get('PORT', 8080))
     logger.info(f"Iniciando localmente na porta {port}")
-    # Quando executado diretamente (python main.py), o Flask usa seu servidor de desenvolvimento.
-    # Para Cloud Run, o `eixa_entry` é o ponto de entrada.
     app.run(debug=True, host='0.0.0.0', port=port)

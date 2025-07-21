@@ -1,7 +1,7 @@
 import logging
 import asyncio
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone # datetime e timezone são importantes para created_at
 from typing import Dict, Any
 
 # ATENÇÃO: eixa_data.py e collections_manager.py devem estar totalmente async
@@ -23,7 +23,7 @@ async def _create_task_data(user_id: str, date_str: str, description: str, time_
         return {"status": "error", "message": "A descrição é obrigatória para criar uma tarefa.", "data": {}}
 
     task_id = str(uuid.uuid4())
-    # MODIFICADO: Incluindo time e duration_minutes
+    # MODIFICADO: Incluindo time, duration_minutes E created_at
     new_task = {
         "id": task_id,
         "description": description.strip(),
@@ -33,7 +33,8 @@ async def _create_task_data(user_id: str, date_str: str, description: str, time_
         "origin": "user_added", # Por padrão, criada pelo usuário via CRUD
         "routine_item_id": None,
         "google_calendar_event_id": None,
-        "is_synced_with_google_calendar": False
+        "is_synced_with_google_calendar": False,
+        "created_at": datetime.now(timezone.utc).isoformat() # NOVO: Timestamp de criação
     }
 
     logger.debug(f"CRUD | Task | _create_task_data: Calling get_daily_tasks_data for '{date_str}'.")
@@ -80,6 +81,9 @@ async def _update_task_status_or_data(user_id: str, date_str: str, task_id: str,
             if new_duration_minutes is not None:
                 task["duration_minutes"] = new_duration_minutes
             
+            # Adicionado: Atualiza updated_at (boa prática para qualquer modificação)
+            task["updated_at"] = datetime.now(timezone.utc).isoformat()
+            
             task_found = True
             break
 
@@ -111,6 +115,7 @@ async def _delete_task_by_id(user_id: str, date_str: str, task_id: str) -> Dict[
         try:
             if not tasks:
                 logger.debug(f"CRUD | Task | Attempting to delete empty agenda doc at: {agenda_doc_ref.path} for user '{user_id}'.")
+                # Se não houver mais tarefas para o dia, deleta o documento do dia inteiro
                 await asyncio.to_thread(agenda_doc_ref.delete)
                 logger.info(f"CRUD | Task | Agenda document for '{date_str}' deleted as it became empty for user '{user_id}'.")
             else:
@@ -150,7 +155,7 @@ async def _create_project_data(user_id: str, project_data: Dict[str, Any]) -> Di
         "status": project_data.get("status", "open"),
         "progress_tags": project_data.get("progress_tags", ["iniciado"]),
         "completion_percentage": project_data.get("completion_percentage", 0),
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(), # NOVO: Timestamp de criação
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "deadline": project_data.get("deadline"),
         "completed_at": None,
@@ -242,7 +247,7 @@ async def _delete_project_fully(user_id: str, project_id: str) -> Dict[str, Any]
 # --- Orquestrador Principal de Ações CRUD (Chamado pelo Frontend) ---
 async def orchestrate_crud_action(payload: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Processa ações CRUD vindas do frontend.
+    Processa ações CRUD vindas do frontend ou do orquestrador principal (LLM).
     Valida o payload e roteia a ação para as funções CRUD internas apropriadas.
     Payload esperado:
     {
@@ -252,8 +257,9 @@ async def orchestrate_crud_action(payload: Dict[str, Any]) -> Dict[str, Any]:
       "data": { 
           "description": str,
           "date": "YYYY-MM-DD",
-          "time": "HH:MM", # NOVO: Hora da tarefa
-          "duration_minutes": int # NOVO: Duração da tarefa em minutos
+          "time": "HH:MM", 
+          "duration_minutes": int,
+          "completed": bool, # Para updates de status
           ...outros dados específicos... 
       }, 
       "item_id": str (opcional para 'create', obrigatório para 'update'/'delete')
@@ -279,9 +285,8 @@ async def orchestrate_crud_action(payload: Dict[str, Any]) -> Dict[str, Any]:
             logger.debug(f"CRUD | orchestrate_crud_action: Task action '{action}' detected.") 
             date_str = data.get('date') 
             
-            # NOVOS: time e duration para tarefas
-            time_str = data.get('time', "00:00") # Default para meia-noite se não fornecido
-            duration_minutes = data.get('duration_minutes', 0) # Default 0 se não fornecido
+            time_str = data.get('time', "00:00") 
+            duration_minutes = data.get('duration_minutes', 0) 
 
             if not date_str:
                 logger.error(f"CRUD | Task | Missing date for action '{action}' for user '{user_id}'. Payload data: {data}")
@@ -289,11 +294,13 @@ async def orchestrate_crud_action(payload: Dict[str, Any]) -> Dict[str, Any]:
 
             try:
                 date.fromisoformat(date_str)
-                # Opcional: validar formato do time_str (HH:MM) aqui se for rigoroso
-                if not isinstance(time_str, str) or len(time_str) != 5 or time_str[2] != ':':
-                    raise ValueError(f"Formato de hora inválido: {time_str}. Use HH:MM.")
-                if not isinstance(duration_minutes, int) or duration_minutes < 0:
-                    raise ValueError(f"Duração inválida: {duration_minutes}. Deve ser um inteiro positivo.")
+                # Adicionado validação mais rigorosa para o formato de hora
+                if time_str is not None: # Pode ser None se não for relevante para a ação, ex: update só de description
+                    if not isinstance(time_str, str) or not re.match(r'^(?:2[0-3]|[01]?[0-9]):(?:[0-5]?[0-9])$', time_str):
+                        raise ValueError(f"Formato de hora inválido: '{time_str}'. Use HH:MM (ex: '09:00' ou '14:30').")
+                if duration_minutes is not None:
+                    if not isinstance(duration_minutes, int) or duration_minutes < 0:
+                        raise ValueError(f"Duração inválida: '{duration_minutes}'. Deve ser um número inteiro positivo.")
 
             except (ValueError, TypeError) as e:
                 logger.error(f"CRUD | Task | Invalid date/time/duration format for user '{user_id}': {e}. Payload data: {data}", exc_info=True)
@@ -305,25 +312,34 @@ async def orchestrate_crud_action(payload: Dict[str, Any]) -> Dict[str, Any]:
                 if not description:
                     logger.error(f"CRUD | Task | Create failed: Description is mandatory for user '{user_id}'. Payload data: {data}")
                     return {"status": "error", "message": "A descrição é obrigatória para criar uma tarefa.", "data": {}, "debug_info": debug_info}
-                # MODIFICADO: Passando time_str e duration_minutes para _create_task_data
                 return await _create_task_data(user_id, date_str, description, time_str, duration_minutes)
 
             elif action == 'update':
                 if not item_id:
                     logger.error(f"CRUD | Task | Update failed: Task ID is mandatory for user '{user_id}'. Payload data: {data}")
                     return {"status": "error", "message": "O ID da tarefa é obrigatório.", "data": {}, "debug_info": debug_info}
-                # MODIFICADO: Passando new_time e new_duration_minutes para _update_task_status_or_data
+                
+                # Campos opcionais para update, se não fornecidos, serão None e a função interna os ignora
+                new_completed_status = data.get('completed')
+                new_description = data.get('description')
+                new_time = data.get('time')
+                new_duration_minutes = data.get('duration_minutes')
+
                 return await _update_task_status_or_data(user_id, date_str, item_id, 
-                                                           data.get('completed'), 
-                                                           data.get('description'),
-                                                           data.get('time'), # new_time
-                                                           data.get('duration_minutes')) # new_duration_minutes
+                                                           new_completed_status, 
+                                                           new_description,
+                                                           new_time,
+                                                           new_duration_minutes)
 
             elif action == 'delete':
                 if not item_id:
                     logger.error(f"CRUD | Task | Delete failed: Task ID is mandatory for user '{user_id}'. Payload data: {data}")
                     return {"status": "error", "message": "O ID da tarefa é obrigatório.", "data": {}, "debug_info": debug_info}
                 return await _delete_task_by_id(user_id, date_str, item_id)
+            
+            else: # Ação desconhecida
+                logger.error(f"CRUD | Task | Unknown action '{action}' for task type for user '{user_id}'. Payload data: {data}")
+                return {"status": "error", "message": "Ação de tarefa não reconhecida.", "data": {}, "debug_info": debug_info}
 
         elif item_type == 'project':
             logger.debug(f"CRUD | orchestrate_crud_action: Project action '{action}' detected.") 
@@ -345,9 +361,13 @@ async def orchestrate_crud_action(payload: Dict[str, Any]) -> Dict[str, Any]:
                     logger.error(f"CRUD | Project | Delete failed: Project ID is mandatory for user '{user_id}'. Payload data: {data}")
                     return {"status": "error", "message": "O ID do projeto é obrigatório.", "data": {}, "debug_info": debug_info}
                 return await _delete_project_fully(user_id, item_id)
+            
+            else: # Ação desconhecida
+                logger.error(f"CRUD | Project | Unknown action '{action}' for project type for user '{user_id}'. Payload data: {data}")
+                return {"status": "error", "message": "Ação de projeto não reconhecida.", "data": {}, "debug_info": debug_info}
 
-        logger.error(f"CRUD | Unknown action or item type: '{item_type}' with action '{action}' for user '{user_id}'. Payload: {payload}")
-        return {"status": "error", "message": "Ação ou tipo de item não reconhecido.", "data": {}, "debug_info": debug_info}
+        logger.error(f"CRUD | Unknown item type: '{item_type}' for user '{user_id}'. Payload: {payload}")
+        return {"status": "error", "message": "Tipo de item não reconhecido.", "data": {}, "debug_info": debug_info}
 
     except Exception as e:
         logger.critical(f"CRUD | CRITICAL ERROR: Unexpected error in orchestrate_crud_action for user '{user_id}'. Payload: {payload}: {e}", exc_info=True) 
