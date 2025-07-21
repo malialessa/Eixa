@@ -3,7 +3,7 @@ import uuid
 from google.cloud import firestore
 import asyncio
 from datetime import datetime, timedelta, timezone, time
-
+from typing import Dict, Any, List
 from firestore_client_singleton import _initialize_firestore_client_instance
 from config import (
     USERS_COLLECTION, EIXA_INTERACTIONS_COLLECTION,
