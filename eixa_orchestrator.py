@@ -13,13 +13,14 @@ from memory_utils import (
     get_emotional_memories,
     get_sabotage_patterns,
 )
-# task_manager e project_manager serão menos usados para CRUD direto, mais para parsing genérico.
-# As funções CRUD reais serão roteadas para eixa_data via este orquestrador.
-# Removeremos estas importações se não forem mais usadas diretamente
+# Removendo task_manager e project_manager pois as funções CRUD são roteadas
+# para crud_orchestrator ou eixa_data diretamente via LLM.
 # from task_manager import parse_and_update_agenda_items, parse_and_update_project_items 
 from eixa_data import (
     get_daily_tasks_data, save_daily_tasks_data, get_project_data, save_project_data, 
-    get_user_history, get_all_projects,
+    get_user_history, 
+    get_all_daily_tasks,         # <<< CORREÇÃO: ADICIONADO AQUI
+    get_all_projects,            # <<< JÁ ESTAVA CORRETO
     get_all_routines, save_routine_template, apply_routine_to_day, delete_routine_template, get_routine_template,
     sync_google_calendar_events_to_eixa
 )
@@ -36,6 +37,7 @@ from firestore_utils import (
     get_confirmation_state,
     set_confirmation_state,
     clear_confirmation_state,
+    # set_firestore_document_merge # <<< REMOVIDO: Não é uma função separada; merge é um arg de set_firestore_document
 )
 from google.cloud import firestore
 
@@ -170,7 +172,7 @@ async def _extract_llm_action_intent(user_id: str, user_message: str, history: l
       "action": "sync_calendar",
       "item_details": {{
           "start_date": "{current_date_iso}",
-          "end_date": "{current_date_iso + timedelta(days=7).isoformat()}"
+          "end_date": "{one_week_later_iso}" # <<< CORRIGIDO AQUI
       }},
       "confirmation_message": "Deseja que eu puxe os eventos do seu Google Calendar para a próxima semana?"
       }}
