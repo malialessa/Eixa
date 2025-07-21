@@ -20,8 +20,8 @@ from memory_utils import (
 from eixa_data import (
     get_daily_tasks_data, save_daily_tasks_data, get_project_data, save_project_data, 
     get_user_history, get_all_projects,
-    get_all_routines, save_routine_template, apply_routine_to_day, delete_routine_template, get_routine_template, # Adicionado get_routine_template aqui
-    sync_google_calendar_events_to_eixa # NOVA FUNÇÃO DE SINCRONIZAÇÃO GC
+    get_all_routines, save_routine_template, apply_routine_to_day, delete_routine_template, get_routine_template,
+    sync_google_calendar_events_to_eixa
 )
 
 from vertex_utils import call_gemini_api
@@ -38,7 +38,7 @@ from firestore_utils import (
     clear_confirmation_state,
     set_firestore_document_merge # Adicionada para atualizar partes do documento
 )
-from google.cloud import firestore # Importar firestore aqui para usar firestore.DELETE_FIELD
+from google.cloud import firestore
 
 from nudger import analyze_for_nudges
 from user_behavior import track_repetition
@@ -49,15 +49,13 @@ from config import DEFAULT_MAX_OUTPUT_TOKENS, DEFAULT_TEMPERATURE, DEFAULT_TIMEZ
 
 from input_parser import parse_incoming_input
 from app_config_loader import get_eixa_templates
-from crud_orchestrator import orchestrate_crud_action # Manter para roteamento de CRUD padrão
+from crud_orchestrator import orchestrate_crud_action
 from profile_settings_manager import parse_and_update_profile_settings, update_profile_from_inferred_data
 
-# NOVO IMPORT para o Google Calendar Utils (precisaremos dela para iniciar o fluxo de auth)
 from google_calendar_utils import GoogleCalendarUtils, GOOGLE_CALENDAR_SCOPES
 
 logger = logging.getLogger(__name__)
 
-# Instância do GoogleCalendarUtils para uso aqui (principalmente para autenticação)
 google_calendar_auth_manager = GoogleCalendarUtils()
 
 async def _extract_llm_action_intent(user_id: str, user_message: str, history: list, gemini_api_key: str, gemini_text_model: str, user_profile: Dict[str, Any], all_routines: List[Dict[str, Any]]) -> dict | None:
@@ -105,42 +103,35 @@ async def _extract_llm_action_intent(user_id: str, user_message: str, history: l
     "action": "create" | "update" | "delete" | "complete" | "apply_routine" | "sync_calendar" | "connect_calendar" | "disconnect_calendar",
     "item_details": {{
         // Campos comuns para Task/Project/Routine Item
-        "id": "ID_DO_ITEM_SE_FOR_UPDATE_OU_DELETE_OU_APPLY_ROUTINE", // Para apply_routine, pode ser o ID da rotina
+        "id": "ID_DO_ITEM_SE_FOR_UPDATE_OU_DELETE_OU_APPLY_ROUTINE",
         "name": "Nome do projeto ou rotina",
         "description": "Descrição da tarefa ou da rotina",
-        "date": "YYYY-MM-DD" | null, // Para tarefas ou rotinas a serem aplicadas em um dia específico
-        "time": "HH:MM" | null, // Hora de início para tarefas/itens de rotina
-        "duration_minutes": int | null, // Duração em minutos para tarefas/itens de rotina
-        "completed": true | false | null, // Apenas para tarefas
-        "status": "open" | "completed" | "in_progress" | null, // Para projetos ou tarefas
+        "date": "YYYY-MM-DD" | null,
+        "time": "HH:MM" | null,
+        "duration_minutes": int | null,
+        "completed": true | false | null,
+        "status": "open" | "completed" | "in_progress" | null,
 
-        // Campos específicos para 'routine' (quando a action é 'create' ou 'update' de um TEMPLATE de rotina)
+        // Campos específicos para 'routine'
         "routine_name": "Nome da Rotina (ex: Rotina Matinal)",
         "routine_description": "Descrição da rotina (ex: Rotina de trabalho das 9h às 18h)",
-        "days_of_week": ["MONDAY", "TUESDAY", ...] | null, // Dias da semana em que a rotina se aplica
-        "schedule": [ // Lista de itens que compõem a rotina
-            {{
-                "id": "UUID_DO_ITEM_NA_ROTINA", // Se estiver atualizando um item específico da rotina. SEJA CRIADO PELO LLM QUANDO CRIAR ROTINA
-                "time": "HH:MM",
-                "description": "Descrição da atividade",
-                "duration_minutes": int,
-                "type": "task" // Ou "break", "event", etc.
-            }}
-            // ... mais itens
+        "days_of_week": ["MONDAY", "TUESDAY", ...] | null,
+        "schedule": [
+            {{"id": "UUID_DO_ITEM_NA_ROTINA", "time": "HH:MM", "description": "Descrição da atividade", "duration_minutes": int, "type": "task"}}
         ] | null,
 
-        // Campos específicos para 'google_calendar' (quando action é 'connect_calendar' ou 'sync_calendar')
-        "start_date": "YYYY-MM-DD", // Para sync_calendar
-        "end_date": "YYYY-MM-DD", // Para sync_calendar
-        "calendar_id": "primary" // Opcional: ID do calendário do Google (ex: 'primary'). Default 'primary'.
+        // Campos específicos para 'google_calendar'
+        "start_date": "YYYY-MM-DD",
+        "end_date": "YYYY-MM-DD",
+        "calendar_id": "primary"
     }},
-    "confirmation_message": "Confirma que deseja...?" // Mensagem personalizada para o usuário
+    "confirmation_message": "Confirma que deseja...?"
     }}
     ```
     **Regras para Datas, Horas e Duração:**
-    *   Para datas, use YYYY-MM-DD. **"hoje" DEVE ser {current_date_iso}. "amanhã" DEVE ser {tomorrow_date_iso}.** "próxima segunda" DEVE ser a data da próxima segunda-feira no formato YYYY-MM-DD. Se nenhuma data for clara, use `null`.
-    *   Para horários, use HH:MM. Se o usuário disser "às 2 da tarde", use "14:00". Se não for claro, use `null`.
-    *   Para duração, use `duration_minutes` como um número inteiro. "por uma hora" = `60`. "por meia hora" = `30`.
+    - Para datas, use YYYY-MM-DD. **"hoje" DEVE ser {current_date_iso}. "amanhã" DEVE ser {tomorrow_date_iso}.** "próxima segunda" DEVE ser a data da próxima segunda-feira no formato YYYY-MM-DD. Se nenhuma data for clara, use `null`.
+    - Para horários, use HH:MM. Se o usuário disser "às 2 da tarde", use "14:00". Se não for claro, use `null`.
+    - Para duração, use `duration_minutes` como um número inteiro. "por uma hora" = `60`. "por meia hora" = `30`.
 
     **EXEMPLOS DE INTENÇÕES E SAÍDAS:**
     - Usuário: "Crie uma rotina de estudo para mim. Das 9h às 10h estudar python, 10h-10h30 pausa, 10h30-12h fazer exercícios."
@@ -166,10 +157,10 @@ async def _extract_llm_action_intent(user_id: str, user_message: str, history: l
       "intent_detected": "routine",
       "action": "apply_routine",
       "item_details": {{
-          "id": "ID_DA_ROTINA_MATINAL_DO_USUARIO_SE_EXISTIR", // O LLM pode tentar buscar o ID
+          "id": "ID_DA_ROTINA_MATINAL_DO_USUARIO_SE_EXISTIR",
           "routine_name": "Rotina Matinal"
       }},
-      "date": "{tomorrow_date_iso}", // Data movida para o nível superior
+      "date": "{tomorrow_date_iso}",
       "confirmation_message": "Confirma a aplicação da 'Rotina Matinal' para amanhã?"
       }}
       ```
@@ -179,8 +170,8 @@ async def _extract_llm_action_intent(user_id: str, user_message: str, history: l
       "intent_detected": "google_calendar",
       "action": "sync_calendar",
       "item_details": {{
-          "start_date": "{current_date_iso}", // Ou data de início da próxima semana
-          "end_date": "{current_date_iso + timedelta(days=7).isoformat()}" // Ou data de fim da próxima semana
+          "start_date": "{current_date_iso}",
+          "end_date": "{current_date_iso + timedelta(days=7).isoformat()}"
       }},
       "confirmation_message": "Deseja que eu puxe os eventos do seu Google Calendar para a próxima semana?"
       }}
@@ -196,7 +187,7 @@ async def _extract_llm_action_intent(user_id: str, user_message: str, history: l
       "confirmation_message": "Você gostaria de conectar a EIXA ao seu Google Calendar? Isso me permitirá ver seus eventos e ajudá-lo melhor."
       }}
       ```
-    """ + routines_context # Adiciona o contexto de rotinas ao system_instruction
+    """ + routines_context
 
     logger.debug(f"_extract_llm_action_intent: Processing message '{user_message[:50]}...' for CRUD/Routine/Calendar intent.")
     llm_history = []
@@ -300,9 +291,10 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             projects_data = await get_all_projects(user_id)
             response_payload["html_view_data"]["projetos"] = projects_data
             response_payload["response"] = "Aqui está a lista dos seus projetos."
-        elif view_request == "rotinas": # Permite ainda ver as rotinas salvas em uma view específica
+        # NOVO: View para TEMPLATES de rotina (acessada pelo botão no Perfil)
+        elif view_request == "rotinas_templates_view":
             response_payload["html_view_data"]["routines"] = all_routines
-            response_payload["response"] = "Aqui estão suas rotinas salvas."
+            response_payload["response"] = "Aqui estão seus templates de rotina."
         elif view_request == "diagnostico":
             diagnostic_data = await get_latest_self_eval(user_id)
             response_payload["html_view_data"]["diagnostico"] = diagnostic_data
@@ -319,6 +311,12 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 response_payload["status"] = "info"
                 response_payload["response"] = "A exibição do seu perfil completo na memória de longo prazo está desativada. Se desejar ativá-la, por favor me diga 'mostrar meu perfil'."
                 logger.info(f"ORCHESTRATOR | Long-term memory (profile) requested but display is disabled for user '{user_id}'.")
+        # NOVO: View Request para verificar status de conexão do Google Calendar
+        elif view_request == "google_calendar_connection_status":
+            is_connected = await google_calendar_auth_manager.get_credentials(user_id) is not None
+            response_payload["html_view_data"]["google_calendar_connected_status"] = is_connected
+            response_payload["response"] = f"Status de conexão Google Calendar: {'Conectado' if is_connected else 'Não Conectado'}."
+            logger.info(f"ORCHESTRATOR | Google Calendar connection status requested. Is Connected: {is_connected}")
         else:
             response_payload["status"] = "error"
             response_payload["response"] = "View solicitada inválida."
@@ -401,12 +399,20 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                     if action_type == "create":
                         # O ID da rotina para save_routine_template é gerado dentro dela se não houver um
                         # Mas o LLM agora gera IDs para os itens da rotina (schedule)
-                        routine_id_from_payload = routine_data.get('id', str(uuid.uuid4()))
+                        routine_id_from_payload = payload_to_execute.get('item_id') # Usa o item_id do payload principal
+                        if not routine_id_from_payload: routine_id_from_payload = str(uuid.uuid4()) # Fallback se LLM não gerou
+
+                        # Garante que os IDs dos itens da rotina (schedule) são strings
+                        if 'schedule' in routine_data and isinstance(routine_data['schedule'], list):
+                            for item in routine_data['schedule']:
+                                if 'id' not in item or not isinstance(item['id'], str):
+                                    item['id'] = str(uuid.uuid4())
+
                         await save_routine_template(user_id, routine_id_from_payload, routine_data)
                         result = {"status": "success", "message": f"Rotina '{routine_name}' criada com sucesso!"}
-                        html_view_update["routines"] = await get_all_routines(user_id) # Atualiza a lista de rotinas
+                        html_view_update["routines"] = await get_all_routines(user_id) # Atualiza a lista de rotinas templates
                     elif action_type == "apply_routine":
-                        routine_name_or_id = routine_data.get('name') or routine_data.get('id')
+                        routine_name_or_id = payload_to_execute.get('item_id') # item_id do payload principal (ID ou nome da rotina)
                         
                         if not routine_name_or_id or not target_date_for_apply:
                             result = {"status": "error", "message": "Não foi possível aplicar a rotina: dados incompletos (nome/ID ou data)."}
@@ -417,12 +423,12 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                             if result.get("status") == "success":
                                 html_view_update["agenda"] = await get_all_daily_tasks(user_id) # Atualiza a agenda
                     elif action_type == "delete":
-                        routine_name_or_id_to_delete = routine_data.get('name') or routine_data.get('id')
+                        routine_name_or_id_to_delete = payload_to_execute.get('item_id') # item_id do payload principal (ID ou nome da rotina)
                         if routine_name_or_id_to_delete:
                             delete_result = await delete_routine_template(user_id, routine_name_or_id_to_delete)
                             result = {"status": delete_result.get("status"), "message": delete_result.get("message", "Rotina excluída com sucesso!")}
                             if result.get("status") == "success":
-                                html_view_update["routines"] = await get_all_routines(user_id) # Atualiza a lista de rotinas
+                                html_view_update["routines"] = await get_all_routines(user_id) # Atualiza a lista de rotinas templates
                         else:
                             result = {"status": "error", "message": "Não foi possível excluir a rotina: ID/Nome não fornecido."}
                     else:
@@ -449,8 +455,8 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                                 'confirmation_payload_cache': {"user_id": user_id, "item_type": "google_calendar", "action": "connect_calendar", "data": {}},
                                 'confirmation_message': "Para sincronizar, preciso que você conecte seu Google Calendar. Confirma que quer conectar agora?"
                             })
-                            # Retorna imediatamente para o re-prompt
-                            response_payload["response"] = stored_confirmation_message # Use a mensagem original do set_confirmation_state para o re-prompt
+                            # Retorna imediatamente para o re-prompt (não para a ação original)
+                            response_payload["response"] = stored_confirmation_message
                             response_payload["status"] = "awaiting_confirmation"
                             return {"response_payload": response_payload}
 
