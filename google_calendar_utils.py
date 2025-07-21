@@ -32,7 +32,7 @@ class GoogleCalendarUtils:
         # Carrega variáveis de ambiente para o OAuth 2.0 Client
         self.client_id = os.getenv('GOOGLE_CLIENT_ID')
         self.client_secret = os.getenv('GOOGLE_CLIENT_SECRET')
-        self.redirect_uri = os.getenv('GOOGLE_REDIRECT_URI') # Ex: https://your-cloud-run-url.run.app/oauth2callback
+        self.redirect_uri = os.getenv('GOOGLE_REDIRECT_URI') # Ex: https://eixa.web.app/oauth2callback
         self.frontend_url = os.getenv('FRONTEND_URL') # NOVO: URL do frontend para javascript_origins
 
         if not all([self.client_id, self.client_secret, self.redirect_uri, self.frontend_url]):
