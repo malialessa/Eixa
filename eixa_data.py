@@ -2,7 +2,7 @@ import logging
 import uuid
 from google.cloud import firestore
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, time
 
 from firestore_client_singleton import _initialize_firestore_client_instance
 from config import (
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 google_calendar_utils = GoogleCalendarUtils()
 
 # --- Funções Auxiliares Comuns ---
-def _parse_time_str(time_str: str) -> datetime.time | None:
+def _parse_time_str(time_str: str) -> time | None:
     """Tenta parsear uma string 'HH:MM' em um objeto datetime.time."""
     if not isinstance(time_str, str) or len(time_str) != 5 or time_str[2] != ':':
         return None
