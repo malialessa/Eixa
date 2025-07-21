@@ -10,6 +10,11 @@ firebase-admin==6.2.0
 google-cloud-firestore==2.16.0 # Ou uma versão mais recente, por exemplo, 2.16.0 ou superior da série 2.x
 google-cloud-storage>=2.10.0
 
+# == Google Authentication e APIs (NOVO AQUI!) ==
+google-auth # Pacote base de autenticação do Google
+google-auth-oauthlib # <--- VOCÊ PRECISA DESTE!
+google-api-python-client # Essencial para interagir com o Google Calendar API
+
 # == Geração de Conteúdo e IA (Vertex AI/Gemini) ==
 vertexai==1.49.0
 google-cloud-translate==3.11.0
