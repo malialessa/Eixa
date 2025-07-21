@@ -2,8 +2,8 @@ import logging
 import uuid
 from google.cloud import firestore
 import asyncio
-from datetime import datetime, timedelta, timezone, time # CORREÇÃO: Adicionado 'time'
-from typing import Dict, Any, List # CORREÇÃO: Adicionado para o NameError 'Dict'
+from datetime import datetime, timedelta, timezone, time
+from typing import Dict, Any, List
 
 from firestore_client_singleton import _initialize_firestore_client_instance
 from config import (
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 google_calendar_utils = GoogleCalendarUtils()
 
 # --- Funções Auxiliares Comuns ---
-def _parse_time_str(time_str: str) -> time | None: # CORREÇÃO: Usando 'time' diretamente
+def _parse_time_str(time_str: str) -> time | None:
     """Tenta parsear uma string 'HH:MM' em um objeto datetime.time."""
     if not isinstance(time_str, str) or len(time_str) != 5 or time_str[2] != ':':
         return None
@@ -40,7 +40,7 @@ def _sort_tasks_by_time(tasks: list) -> list:
         parsed_time = _parse_time_str(time_str)
         if parsed_time:
             return (1, parsed_time)
-        return (0, 0) # Coloca tarefas sem tempo no início, sem ordem específica entre elas
+        return (0, 0)
 
     return sorted(tasks, key=sort_key)
 
@@ -166,8 +166,8 @@ async def get_routine_template(user_id: str, routine_id_or_name: str) -> dict | 
 async def save_routine_template(user_id: str, routine_id: str, data: dict):
     db = _initialize_firestore_client_instance()
     doc_ref = db.collection(USERS_COLLECTION).document(user_id).collection(EIXA_ROUTINES_COLLECTION).document(routine_id)
-    # CORREÇÃO DA LINHA DE LOG: Usar routines_ref.path ou routines_ref.id
-    logger.debug(f"EIXA_DATA | save_routine_template: Saving routine '{routine_id}' for user '{user_id}'. Path: {doc_ref.path}. Data: {data}")
+    # CORREÇÃO DA LINHA DE LOG: Usar routines_ref.id ou um caminho mais genérico
+    logger.debug(f"EIXA_DATA | save_routine_template: Saving routine '{routine_id}' for user '{user_id}'. Path: {doc_ref.parent.path}/{doc_ref.id}. Data: {data}") # Usando a forma robusta
     try:
         current_time = datetime.now(timezone.utc).isoformat()
         data.setdefault("created_at", current_time)
@@ -208,8 +208,8 @@ async def delete_routine_template(user_id: str, routine_id_or_name: str) -> Dict
 async def get_all_routines(user_id: str) -> list[dict]:
     db = _initialize_firestore_client_instance()
     routines_ref = db.collection(USERS_COLLECTION).document(user_id).collection(EIXA_ROUTINES_COLLECTION)
-    # CORREÇÃO DA LINHA DE LOG: Usar routines_ref.path ou routines_ref.id
-    logger.debug(f"EIXA_DATA | get_all_routines: Retrieving all routines for user '{user_id}'. Path: {routines_ref.path}") 
+    # CORREÇÃO DA LINHA DE LOG: Usar routines_ref.id ou um caminho mais genérico
+    logger.debug(f"EIXA_DATA | get_all_routines: Retrieving all routines for user '{user_id}'. Path: {routines_ref.parent.path}/{routines_ref.id}") # Usando a forma robusta
     all_routines = []
     try:
         docs = await asyncio.to_thread(lambda: list(routines_ref.stream()))
