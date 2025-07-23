@@ -166,12 +166,18 @@ async def get_routine_template(user_id: str, routine_id_or_name: str) -> dict | 
 async def save_routine_template(user_id: str, routine_id: str, data: dict):
     db = _initialize_firestore_client_instance()
     doc_ref = db.collection(USERS_COLLECTION).document(user_id).collection(EIXA_ROUTINES_COLLECTION).document(routine_id)
-    # CORREÇÃO DA LINHA DE LOG: Usar routines_ref.id ou um caminho mais genérico
-    logger.debug(f"EIXA_DATA | save_routine_template: Saving routine '{routine_id}' for user '{user_id}'. Path: {doc_ref.parent.path}/{doc_ref.id}. Data: {data}") # Usando a forma robusta
+    logger.debug(f"EIXA_DATA | save_routine_template: Saving routine '{routine_id}' for user '{user_id}'. Path: {doc_ref.parent.path}/{doc_ref.id}. Data: {data}") 
     try:
         current_time = datetime.now(timezone.utc).isoformat()
         data.setdefault("created_at", current_time)
         data["updated_at"] = current_time
+
+        # NOVO: Adiciona o campo recurrence_rule se presente nos dados
+        data.setdefault("recurrence_rule", None) 
+        if 'recurrence_rule' in data and data['recurrence_rule'] is not None:
+            # Garante que recurrence_rule seja string, caso venha de LLM como outro tipo
+            data['recurrence_rule'] = str(data['recurrence_rule'])
+
 
         if 'schedule' in data and isinstance(data['schedule'], list):
             for item in data['schedule']:
@@ -208,8 +214,7 @@ async def delete_routine_template(user_id: str, routine_id_or_name: str) -> Dict
 async def get_all_routines(user_id: str) -> list[dict]:
     db = _initialize_firestore_client_instance()
     routines_ref = db.collection(USERS_COLLECTION).document(user_id).collection(EIXA_ROUTINES_COLLECTION)
-    # CORREÇÃO DA LINHA DE LOG: Usar routines_ref.id ou um caminho mais genérico
-    logger.debug(f"EIXA_DATA | get_all_routines: Retrieving all routines for user '{user_id}'. Path: {routines_ref.parent.path}/{routines_ref.id}") # Usando a forma robusta
+    logger.debug(f"EIXA_DATA | get_all_routines: Retrieving all routines for user '{user_id}'. Path: {routines_ref.parent.path}/{routines_ref.id}")
     all_routines = []
     try:
         docs = await asyncio.to_thread(lambda: list(routines_ref.stream()))
