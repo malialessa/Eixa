@@ -13,14 +13,11 @@ from memory_utils import (
     get_emotional_memories,
     get_sabotage_patterns,
 )
-# Removendo task_manager e project_manager pois as funções CRUD são roteadas
-# para crud_orchestrator ou eixa_data diretamente via LLM.
-# from task_manager import parse_and_update_agenda_items, parse_and_update_project_items 
 from eixa_data import (
     get_daily_tasks_data, save_daily_tasks_data, get_project_data, save_project_data, 
     get_user_history, 
-    get_all_daily_tasks,         # <<< CORREÇÃO: ADICIONADO AQUI
-    get_all_projects,            # <<< JÁ ESTAVA CORRETO
+    get_all_daily_tasks,         
+    get_all_projects,            
     get_all_routines, save_routine_template, apply_routine_to_day, delete_routine_template, get_routine_template,
     sync_google_calendar_events_to_eixa
 )
@@ -37,7 +34,6 @@ from firestore_utils import (
     get_confirmation_state,
     set_confirmation_state,
     clear_confirmation_state,
-    # set_firestore_document_merge # <<< REMOVIDO: Não é uma função separada; merge é um arg de set_firestore_document
 )
 from google.cloud import firestore
 
@@ -61,22 +57,25 @@ google_calendar_auth_manager = GoogleCalendarUtils()
 
 async def _extract_llm_action_intent(user_id: str, user_message: str, history: list, gemini_api_key: str, gemini_text_model: str, user_profile: Dict[str, Any], all_routines: List[Dict[str, Any]]) -> dict | None:
     """
-    Extrai intenções de ação (CRUD, Rotinas, Google Calendar) da mensagem do usuário usando o LLM.
+    Extrai intenções de ação (CRUD, Rotinas) da mensagem do usuário usando o LLM.
+    NÃO INFERE MAIS AÇÕES DE GOOGLE CALENDAR A PARTIR DO CHAT.
     """
     current_date_utc = datetime.now(timezone.utc).date()
     current_date_iso = current_date_utc.isoformat()
     tomorrow_date_iso = (current_date_utc + timedelta(days=1)).isoformat()
-    one_week_later_iso = (current_date_utc + timedelta(days=7)).isoformat() # Adicionado para sync GC
+    # one_week_later_iso removido pois não é mais relevante para LLM de GC
 
     # Prepara a lista de rotinas do usuário para o LLM
     routines_list_for_llm = []
     for routine in all_routines:
-        # Inclui o schedule no summary da rotina para o LLM ter mais contexto
         schedule_summary = []
         for item in routine.get('schedule', []):
             schedule_summary.append(f"({item.get('time', 'N/A')} - {item.get('description', 'N/A')})")
         
-        routines_list_for_llm.append(f"- Nome: {routine.get('name')}, ID: {routine.get('id')}, Descrição: {routine.get('description', 'N/A')}. Tarefas: {', '.join(schedule_summary)}")
+        # Adiciona recurrence_rule ao summary para o LLM
+        recurrence_info = f", Recorrência: {routine.get('recurrence_rule', 'N/A')}" if routine.get('recurrence_rule') else ""
+
+        routines_list_for_llm.append(f"- Nome: {routine.get('name')}, ID: {routine.get('id')}, Descrição: {routine.get('description', 'N/A')}{recurrence_info}. Tarefas: {', '.join(schedule_summary)}")
     
     routines_context = ""
     if routines_list_for_llm:
@@ -84,7 +83,7 @@ async def _extract_llm_action_intent(user_id: str, user_message: str, history: l
 
     system_instruction_for_action_extraction = f"""
     A data atual é {current_date_iso}. O fuso horário do usuário é {user_profile.get('timezone', DEFAULT_TIMEZONE)}.
-    Você é um assistente de extração de intenções altamente preciso e sem vieses. Sua função é analisar **EXCLUSIVAMENTE a última mensagem do usuário** para identificar INTENÇÕES CLARAS e DIRETAS de CRIAÇÃO, ATUALIZAÇÃO, EXCLUSÃO, MARCAÇÃO DE CONCLUSÃO (COMPLETE) de TAREFAS OU PROJETOS, ou GERENCIAMENTO de ROTINAS/CALENDÁRIOS.
+    Você é um assistente de extração de intenções altamente preciso e sem vieses. Sua função é analisar **EXCLUSIVAMENTE a última mensagem do usuário** para identificar INTENÇÕES CLARAS e DIRETAS de CRIAÇÃO, ATUALIZAÇÃO, EXCLUSÃO, MARCAÇÃO DE CONCLUSÃO (COMPLETE) de TAREFAS OU PROJETOS, ou GERENCIAMENTO de ROTINAS.
 
     **REGRAS RÍGIDAS DE SAÍDA:**
     1.  **SEMPRE** retorne APENAS um bloco JSON, sem texto conversacional.
@@ -95,13 +94,13 @@ async def _extract_llm_action_intent(user_id: str, user_message: str, history: l
         }}
         ```
         Não tente interpretar essas mensagens como novas intenções de CRUD/Gerenciamento. Elas são respostas a uma pergunta anterior.
-    3.  Se uma intenção de tarefa, projeto, rotina ou calendário for detectada **CLARAMENTE** na ÚLTIMA MENSAGEM (e não for uma resposta de confirmação/negação), retorne um JSON com a seguinte estrutura.
+    3.  Se uma intenção de tarefa, projeto ou rotina for detectada **CLARAMENTE** na ÚLTIMA MENSAGEM (e não for uma resposta de confirmação/negação), retorne um JSON com a seguinte estrutura.
 
     **ESTRUTURA DE SAÍDA DETALHADA:**
     ```json
     {{
-    "intent_detected": "task" | "project" | "routine" | "google_calendar" | "none",
-    "action": "create" | "update" | "delete" | "complete" | "apply_routine" | "sync_calendar" | "connect_calendar" | "disconnect_calendar",
+    "intent_detected": "task" | "project" | "routine" | "none",
+    "action": "create" | "update" | "delete" | "complete" | "apply_routine",
     "item_details": {{
         // Campos comuns para Task/Project/Routine Item
         "id": "ID_DO_ITEM_SE_FOR_UPDATE_OU_DELETE_OU_APPLY_ROUTINE",
@@ -117,14 +116,10 @@ async def _extract_llm_action_intent(user_id: str, user_message: str, history: l
         "routine_name": "Nome da Rotina (ex: Rotina Matinal)",
         "routine_description": "Descrição da rotina (ex: Rotina de trabalho das 9h às 18h)",
         "days_of_week": ["MONDAY", "TUESDAY", ...] | null,
+        "recurrence_rule": "Diário" | "Semanal" | "Mensal" | "Anual" | "Toda segunda-feira" | "Todo dia 15 do mês" | null, // NOVO CAMPO PARA RECORRÊNCIA
         "schedule": [
-            {{"id": "UUID_DO_ITEM_NA_ROTINA", "time": "HH:MM", "description": "Descrição da atividade", "duration_minutes": int, "type": "task"}}
-        ] | null,
-
-        // Campos específicos para 'google_calendar'
-        "start_date": "YYYY-MM-DD",
-        "end_date": "YYYY-MM-DD",
-        "calendar_id": "primary"
+            {{"id": "UUID_GERADO_PELO_LLM", "time": "HH:MM", "description": "Descrição da atividade", "duration_minutes": int, "type": "task"}}
+        ] | null
     }},
     "confirmation_message": "Confirma que deseja...?"
     }}
@@ -135,7 +130,7 @@ async def _extract_llm_action_intent(user_id: str, user_message: str, history: l
     - Para duração, use `duration_minutes` como um número inteiro. "por uma hora" = `60`. "por meia hora" = `30`.
 
     **EXEMPLOS DE INTENÇÕES E SAÍDAS:**
-    - Usuário: "Crie uma rotina de estudo para mim. Das 9h às 10h estudar python, 10h-10h30 pausa, 10h30-12h fazer exercícios."
+    - Usuário: "Crie uma rotina de estudo para mim que se repita semanalmente. Das 9h às 10h estudar python, 10h-10h30 pausa, 10h30-12h fazer exercícios."
       ```json
       {{
       "intent_detected": "routine",
@@ -143,13 +138,14 @@ async def _extract_llm_action_intent(user_id: str, user_message: str, history: l
       "item_details": {{
           "routine_name": "Rotina de Estudo",
           "routine_description": "Plano de estudo customizado.",
+          "recurrence_rule": "Semanalmente",
           "schedule": [
               {{"id": "UUID_GERADO_PELO_LLM", "time": "09:00", "description": "Estudar Python", "duration_minutes": 60, "type": "task"}},
               {{"id": "UUID_GERADO_PELO_LLM", "time": "10:00", "description": "Pausa", "duration_minutes": 30, "type": "break"}},
               {{"id": "UUID_GERADO_PELO_LLM", "time": "10:30", "description": "Fazer exercícios", "duration_minutes": 90, "type": "task"}}
           ]
       }},
-      "confirmation_message": "Confirma a criação da rotina 'Rotina de Estudo' com esses horários?"
+      "confirmation_message": "Confirma a criação da rotina 'Rotina de Estudo' com esses horários, repetindo semanalmente?"
       }}
       ```
     - Usuário: "Aplique minha 'Rotina Matinal' para amanhã."
@@ -165,32 +161,9 @@ async def _extract_llm_action_intent(user_id: str, user_message: str, history: l
       "confirmation_message": "Confirma a aplicação da 'Rotina Matinal' para amanhã?"
       }}
       ```
-    - Usuário: "Sincronize meu Google Calendar para a próxima semana."
-      ```json
-      {{
-      "intent_detected": "google_calendar",
-      "action": "sync_calendar",
-      "item_details": {{
-          "start_date": "{current_date_iso}",
-          "end_date": "{one_week_later_iso}" # <<< CORRIGIDO AQUI
-      }},
-      "confirmation_message": "Deseja que eu puxe os eventos do seu Google Calendar para a próxima semana?"
-      }}
-      ```
-    - Usuário: "Conecte-me ao meu Google Calendar."
-      ```json
-      {{
-      "intent_detected": "google_calendar",
-      "action": "connect_calendar",
-      "item_details": {{
-          // `redirect_url` será preenchido pelo backend, não pelo LLM.
-      }},
-      "confirmation_message": "Você gostaria de conectar a EIXA ao seu Google Calendar? Isso me permitirá ver seus eventos e ajudá-lo melhor."
-      }}
-      ```
     """ + routines_context
 
-    logger.debug(f"_extract_llm_action_intent: Processing message '{user_message[:50]}...' for CRUD/Routine/Calendar intent.")
+    logger.debug(f"_extract_llm_action_intent: Processing message '{user_message[:50]}...' for CRUD/Routine intent.")
     llm_history = []
     for turn in history[-5:]:
         if turn.get("input"):
@@ -229,7 +202,11 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                                      gemini_api_key: str = None, gemini_text_model: str = GEMINI_TEXT_MODEL,
                                      gemini_vision_model: str = GEMINI_VISION_MODEL,
                                      firestore_collection_interactions: str = 'interactions',
-                                     debug_mode: bool = False) -> Dict[str, Any]:
+                                     debug_mode: bool = False, # Mantido
+                                     request_type: str = 'chat_and_view', # NOVO: Para diferenciar requisições de frontend
+                                     action: str = None, # NOVO: Para ações diretas (e.g., GC actions)
+                                     action_data: Dict[str, Any] = None # NOVO: Para dados de ações diretas
+                                    ) -> Dict[str, Any]:
     
     base_eixa_persona_template_text, user_profile_template_content, user_flags_template_content = get_eixa_templates()
 
@@ -258,7 +235,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         confirmation_payload_cache = confirmation_state_data.get('confirmation_payload_cache', {})
         stored_confirmation_message = confirmation_state_data.get('confirmation_message', "Aguardando sua confirmação. Por favor, diga 'sim' ou 'não'.")
         
-        logger.debug(f"ORCHESTRATOR_START | User '{user_id}' req: '{user_message[:50] if user_message else '[no message]'}' | State: is_in_confirmation_state={is_in_confirmation_state}, confirmation_payload_cache_keys={list(confirmation_payload_cache.keys()) if confirmation_payload_cache else 'None'}. Loaded confirmation_state_data={confirmation_state_data}")
+        logger.debug(f"ORCHESTRATOR_START | User '{user_id}' req: '{user_message[:50] if user_message else '[no message]'}' | Request Type: {request_type} | State: is_in_confirmation_state={is_in_confirmation_state}, confirmation_payload_cache_keys={list(confirmation_payload_cache.keys()) if confirmation_payload_cache else 'None'}. Loaded confirmation_state_data={confirmation_state_data}")
 
         user_flags_data_raw = await get_firestore_document_data('flags', user_id)
         user_flags_data = user_flags_data_raw.get("behavior_flags", user_flags_template_content) if user_flags_data_raw else user_flags_template_content
@@ -322,18 +299,71 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             response_payload["status"] = "error"
             response_payload["response"] = "View solicitada inválida."
 
-        if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
+        if mode_debug_on: response_payload["debug_info"].setdefault("orchestrator_debug_log", []).extend(debug_info_logs)
+        return {"response_payload": response_payload}
+    
+    # --- 3. Processamento de Requisições DIRETAS de Google Calendar (NÃO via LLM) ---
+    if request_type == "google_calendar_action":
+        logger.debug(f"ORCHESTRATOR | Processing direct Google Calendar action: {action}")
+        result = {"status": "error", "message": "Ação de Google Calendar não reconhecida ou dados incompletos."}
+        html_view_update = {}
+
+        if action == "connect_calendar":
+            current_creds = await google_calendar_auth_manager.get_credentials(user_id)
+            if current_creds:
+                result = {"status": "info", "message": "Você já está conectado ao Google Calendar."}
+            else:
+                try:
+                    auth_url = await google_calendar_auth_manager.get_auth_url(user_id)
+                    result = {"status": "success", "message": "Por favor, clique no link para conectar seu Google Calendar. Se a janela não abrir automaticamente, copie e cole no seu navegador:", "google_auth_redirect_url": auth_url}
+                    logger.info(f"ORCHESTRATOR | Generated Google Auth URL for user {user_id}: {auth_url}")
+                except Exception as e:
+                    logger.error(f"ORCHESTRATOR | Failed to generate Google Auth URL for user {user_id}: {e}", exc_info=True)
+                    result = {"status": "error", "message": "Não foi possível gerar o link de conexão com o Google Calendar. Tente novamente."}
+        
+        elif action == "sync_calendar":
+            start_date_str = action_data.get('start_date')
+            end_date_str = action_data.get('end_date')
+
+            start_date_obj = datetime.fromisoformat(start_date_str) if start_date_str else datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+            end_date_obj = datetime.fromisoformat(end_date_str) if end_date_str else start_date_obj + timedelta(days=7) # Padrão: 7 dias
+
+            creds = await google_calendar_auth_manager.get_credentials(user_id)
+            if not creds:
+                result = {"status": "info", "message": "Para sincronizar, sua conta Google precisa estar conectada. Por favor, conecte-a primeiro."}
+            else:
+                sync_result = await sync_google_calendar_events_to_eixa(user_id, start_date_obj, end_date_obj)
+                result = {"status": sync_result.get("status"), "message": sync_result.get("message", "Sincronização com Google Calendar concluída!")}
+                if result.get("status") == "success":
+                    html_view_update["agenda"] = await get_all_daily_tasks(user_id)
+        
+        elif action == "disconnect_calendar":
+            delete_result = await google_calendar_auth_manager.delete_credentials(user_id)
+            if delete_result.get("status") == "success":
+                result = {"status": "success", "message": "Sua conta Google foi desconectada da EIXA."}
+            else:
+                result = {"status": "error", "message": delete_result.get("message", "Falha ao desconectar a conta Google.")}
+
+        response_payload["status"] = result.get("status")
+        response_payload["response"] = result.get("message")
+        if result.get("google_auth_redirect_url"): # Passa a URL de redirect se houver
+            response_payload["google_auth_redirect_url"] = result["google_auth_redirect_url"]
+        response_payload["html_view_data"] = html_view_update
+        
+        if mode_debug_on: response_payload["debug_info"].setdefault("orchestrator_debug_log", []).extend(debug_info_logs)
+        # Não salva no histórico de chat se for uma ação de GC direta. O histórico é para conversas LLM.
         return {"response_payload": response_payload}
 
-    # --- 3. Verificação de Mensagem Vazia ---
+
+    # --- 4. Verificação de Mensagem Vazia (APÓS TRATAR VIEW/GC ACTIONS) ---
     if not user_message and not uploaded_file_data:
-        logger.debug("ORCHESTRATOR | No user message or file data provided.")
+        logger.debug("ORCHESTRATOR | No user message or file data provided for chat/LLM interaction.")
         response_payload["status"] = "error"
         response_payload["response"] = "Nenhuma mensagem ou arquivo fornecido para interação."
-        if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
+        if mode_debug_on: response_payload["debug_info"].setdefault("orchestrator_debug_log", []).extend(debug_info_logs)
         return {"response_payload": response_payload}
 
-    # --- 4. Preparação da Mensagem (Idioma, Histórico) ---
+    # --- 5. Preparação da Mensagem (Idioma, Histórico) ---
     user_input_for_saving = user_message or (uploaded_file_data.get('filename') if uploaded_file_data else "Ação do sistema")
     source_language = await detect_language(user_message or "Olá")
     response_payload["language"] = source_language
@@ -345,7 +375,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         if translated_user_message is None:
             response_payload["status"] = "error"
             response_payload["response"] = f"Ocorreu um problema ao traduzir sua mensagem de {source_language}."
-            if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
+            if mode_debug_on: response_payload["debug_info"].setdefault("orchestrator_debug_log", []).extend(debug_info_logs)
             await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
             return {"response_payload": response_payload}
         user_message_for_processing = translated_user_message
@@ -353,7 +383,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
     full_history = await get_user_history(user_id, firestore_collection_interactions, limit=20)
     logger.debug(f"ORCHESTRATOR | Full history retrieved, {len(full_history)} turns. History for LLM: {full_history[-5:]}")
 
-    # --- 5. LÓGICA DE CONFIRMAÇÃO PENDENTE (MAIOR PRIORIDADE AQUI!) ---
+    # --- 6. LÓGICA DE CONFIRMAÇÃO PENDENTE (MAIOR PRIORIDADE AQUI, APÓS VIEW/GC ACTIONS DIRETAS) ---
     if is_in_confirmation_state and confirmation_payload_cache:
         logger.debug(f"ORCHESTRATOR | Entered confirmation state logic path. Cached action: {confirmation_payload_cache.get('action')}")
         lower_message = user_message_for_processing.lower().strip()
@@ -363,8 +393,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             "certo", "beleza", "isso", "deletar", "excluir", "remover",
             "concluir", "finalizar", "ok, faça",
             "sim, por favor", "sim por favor", "claro", "definitivamente",
-            "vai", "fazer", "execute", "prossiga", "adiante",
-            "sincronizar", "conectar", "desconectar" # Novas palavras-chave de confirmação
+            "vai", "fazer", "execute", "prossiga", "adiante"
         ]
         negative_keywords = ["não", "nao", "cancela", "esquece", "pare", "não quero", "nao quero", "negativo", "desisto"]
 
@@ -372,131 +401,71 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             logger.info(f"ORCHESTRATOR | Confirmation Flow: Positive keyword '{lower_message}' detected. Attempting to execute cached action.")
             payload_to_execute = confirmation_payload_cache
             
-            action_type = payload_to_execute.get('action') # "create" | "update" | "delete" | "apply_routine" | "sync_calendar" | "connect_calendar" | "disconnect_calendar"
-            item_type = payload_to_execute.get('item_type') # "task" | "project" | "routine" | "google_calendar"
+            action_type = payload_to_execute.get('action')
+            item_type = payload_to_execute.get('item_type') 
 
             result = {"status": "error", "message": "Ação não reconhecida no fluxo de confirmação."} # Default
             html_view_update = {} # Para coletar as atualizações de HTML
 
             try:
                 if item_type in ["task", "project"]:
-                    # Roteia para o crud_orchestrator existente
                     result = await orchestrate_crud_action(payload_to_execute)
                     if result.get('html_view_data'):
                         html_view_update = result['html_view_data']
-                    # Garante que, se for uma tarefa, a agenda seja recarregada (crud_orchestrator já faz isso, mas reforço)
                     elif item_type == "task":
                         html_view_update["agenda"] = await get_all_daily_tasks(user_id)
                     elif item_type == "project":
                         html_view_update["projetos"] = await get_all_projects(user_id)
 
                 elif item_type == "routine":
-                    # Ajuste aqui para usar 'data' do payload, que já tem routine_name, schedule, etc.
                     routine_data = payload_to_execute.get('data', {}) 
                     routine_name = routine_data.get('routine_name')
-                    # Para 'apply_routine', a data está no nível superior do payload
                     target_date_for_apply = payload_to_execute.get('date') 
 
                     if action_type == "create":
-                        # O ID da rotina para save_routine_template é gerado dentro dela se não houver um
-                        # Mas o LLM agora gera IDs para os itens da rotina (schedule)
-                        routine_id_from_payload = payload_to_execute.get('item_id') # Usa o item_id do payload principal
-                        if not routine_id_from_payload: routine_id_from_payload = str(uuid.uuid4()) # Fallback se LLM não gerou
+                        routine_id_from_payload = payload_to_execute.get('item_id')
+                        if not routine_id_from_payload: routine_id_from_payload = str(uuid.uuid4())
 
-                        # Garante que os IDs dos itens da rotina (schedule) são strings
                         if 'schedule' in routine_data and isinstance(routine_data['schedule'], list):
                             for item in routine_data['schedule']:
                                 if 'id' not in item or not isinstance(item['id'], str):
                                     item['id'] = str(uuid.uuid4())
+                        
+                        # Inclui a regra de recorrência, se presente
+                        routine_data['recurrence_rule'] = item_details.get('recurrence_rule', None)
 
                         await save_routine_template(user_id, routine_id_from_payload, routine_data)
                         result = {"status": "success", "message": f"Rotina '{routine_name}' criada com sucesso!"}
-                        html_view_update["routines"] = await get_all_routines(user_id) # Atualiza a lista de rotinas templates
+                        html_view_update["routines"] = await get_all_routines(user_id)
                     elif action_type == "apply_routine":
-                        routine_name_or_id = payload_to_execute.get('item_id') # item_id do payload principal (ID ou nome da rotina)
+                        routine_name_or_id = payload_to_execute.get('item_id') 
                         
                         if not routine_name_or_id or not target_date_for_apply:
                             result = {"status": "error", "message": "Não foi possível aplicar a rotina: dados incompletos (nome/ID ou data)."}
                         else:
-                            # A função apply_routine_to_day precisa buscar o template se for passado só o nome/ID
                             apply_result = await apply_routine_to_day(user_id, target_date_for_apply, routine_name_or_id)
                             result = {"status": apply_result.get("status"), "message": apply_result.get("message", f"Rotina aplicada para {target_date_for_apply} com sucesso!")}
                             if result.get("status") == "success":
-                                html_view_update["agenda"] = await get_all_daily_tasks(user_id) # Atualiza a agenda
+                                html_view_update["agenda"] = await get_all_daily_tasks(user_id)
                     elif action_type == "delete":
-                        routine_name_or_id_to_delete = payload_to_execute.get('item_id') # item_id do payload principal (ID ou nome da rotina)
+                        routine_name_or_id_to_delete = payload_to_execute.get('item_id')
                         if routine_name_or_id_to_delete:
                             delete_result = await delete_routine_template(user_id, routine_name_or_id_to_delete)
                             result = {"status": delete_result.get("status"), "message": delete_result.get("message", "Rotina excluída com sucesso!")}
                             if result.get("status") == "success":
-                                html_view_update["routines"] = await get_all_routines(user_id) # Atualiza a lista de rotinas templates
+                                html_view_update["routines"] = await get_all_routines(user_id)
                         else:
                             result = {"status": "error", "message": "Não foi possível excluir a rotina: ID/Nome não fornecido."}
                     else:
                         logger.warning(f"ORCHESTRATOR | Unhandled routine action: {action_type} for user {user_id}")
                         result = {"status": "error", "message": "Ação de rotina não suportada."}
-                
-                elif item_type == "google_calendar":
-                    sync_details = payload_to_execute.get('data', {}) # Pega os detalhes da sincronização de 'data'
-                    
-                    if action_type == "sync_calendar":
-                        start_date_str = sync_details.get('start_date')
-                        end_date_str = sync_details.get('end_date')
-
-                        start_date_obj = datetime.fromisoformat(start_date_str) if start_date_str else datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-                        end_date_obj = datetime.fromisoformat(end_date_str) if end_date_str else start_date_obj + timedelta(days=7) # Padrão: 7 dias
-
-                        # Verificar credenciais ANTES de tentar sincronizar
-                        creds = await google_calendar_auth_manager.get_credentials(user_id)
-                        if not creds:
-                            result = {"status": "info", "message": "Para sincronizar, sua conta Google precisa estar conectada. Quer conectar agora?"}
-                            # Setar um novo payload de confirmação para "connect_calendar"
-                            await set_confirmation_state(user_id, {
-                                'awaiting_confirmation': True,
-                                'confirmation_payload_cache': {"user_id": user_id, "item_type": "google_calendar", "action": "connect_calendar", "data": {}},
-                                'confirmation_message': "Para sincronizar, preciso que você conecte seu Google Calendar. Confirma que quer conectar agora?"
-                            })
-                            # Retorna imediatamente para o re-prompt (não para a ação original)
-                            response_payload["response"] = stored_confirmation_message
-                            response_payload["status"] = "awaiting_confirmation"
-                            return {"response_payload": response_payload}
-
-                        sync_result = await sync_google_calendar_events_to_eixa(user_id, start_date_obj, end_date_obj)
-                        result = {"status": sync_result.get("status"), "message": sync_result.get("message", "Sincronização com Google Calendar concluída!")}
-                        if result.get("status") == "success":
-                            html_view_update["agenda"] = await get_all_daily_tasks(user_id)
-                    
-                    elif action_type == "connect_calendar":
-                        # Este bloco é executado QUANDO o usuário confirma que quer conectar.
-                        # Aqui, o backend DEVE gerar a URL de autorização e o frontend DEVE redirecionar.
-                        try:
-                            auth_url = await google_calendar_auth_manager.get_auth_url(user_id)
-                            result = {"status": "success", "message": "Por favor, clique no link para conectar seu Google Calendar. Se a janela não abrir automaticamente, copie e cole no seu navegador:", "google_auth_redirect_url": auth_url}
-                            logger.info(f"ORCHESTRATOR | Generated Google Auth URL for user {user_id}: {auth_url}")
-                            # Não limpa o confirmation state aqui, o frontend deve limpar após o redirect
-                        except Exception as e:
-                            logger.error(f"ORCHESTRATOR | Failed to generate Google Auth URL for user {user_id}: {e}", exc_info=True)
-                            result = {"status": "error", "message": "Não foi possível gerar o link de conexão com o Google Calendar. Tente novamente."}
-                    
-                    elif action_type == "disconnect_calendar":
-                        delete_result = await google_calendar_auth_manager.delete_credentials(user_id)
-                        if delete_result.get("status") == "success":
-                            result = {"status": "success", "message": "Sua conta Google foi desconectada da EIXA."}
-                        else:
-                            result = {"status": "error", "message": delete_result.get("message", "Falha ao desconectar a conta Google.")}
-
             except Exception as e:
                 logger.critical(f"ORCHESTRATOR | CRITICAL ERROR executing confirmed action type '{item_type}' with action '{action_type}' for user '{user_id}': {e}", exc_info=True)
                 result = {"status": "error", "message": f"Erro interno ao executar a ação confirmada: {str(e)}"}
 
             final_ai_response = result.get("message", "Ação concluída com sucesso.")
             if result.get("status") == "success":
-                # Adiciona URL de redirecionamento se presente no resultado (apenas para connect_calendar)
-                if result.get("google_auth_redirect_url"):
-                    response_payload["google_auth_redirect_url"] = result["google_auth_redirect_url"]
-                    final_ai_response = result["message"] # A mensagem já é específica o suficiente
-                else:
-                    final_ai_response += " O que mais posso fazer por você?"
+                final_ai_response += " O que mais posso fazer por você?"
             else:
                 final_ai_response += " Por favor, tente novamente ou reformule seu pedido."
 
@@ -504,12 +473,10 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             response_payload["response"] = final_ai_response
             response_payload["html_view_data"] = html_view_update # Inclui as atualizações de HTML
 
-            # Limpa o estado de confirmação após a execução, EXCETO se for 'connect_calendar' bem-sucedido
-            # pois o frontend precisa da URL antes de limpar.
-            if not (item_type == "google_calendar" and action_type == "connect_calendar" and result.get("status") == "success"):
-                await clear_confirmation_state(user_id)
+            # Limpa o estado de confirmação após a execução.
+            await clear_confirmation_state(user_id)
             
-            if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
+            if mode_debug_on: response_payload["debug_info"].setdefault("orchestrator_debug_log", []).extend(debug_info_logs)
             await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
             return {"response_payload": response_payload}
 
@@ -527,7 +494,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
 
             response_payload["response"] = final_ai_response + " Como posso ajudar de outra forma?"
             response_payload["debug_info"] = { "intent_detected": "cancellation", "action_confirmed": "cancel" }
-            if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
+            if mode_debug_on: response_payload["debug_info"].setdefault("orchestrator_debug_log", []).extend(debug_info_logs)
             await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
             return {"response_payload": response_payload}
         
@@ -535,15 +502,15 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             logger.info(f"ORCHESTRATOR | Confirmation Flow: Ambiguous message '{lower_message}'. Re-prompting.")
             response_payload["response"] = stored_confirmation_message
             response_payload["status"] = "awaiting_confirmation"
-            if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
+            if mode_debug_on: response_payload["debug_info"].setdefault("orchestrator_debug_log", []).extend(debug_info_logs)
             await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
             return {"response_payload": response_payload}
 
 
-    # --- 6. Lógica Principal de Inferência (SÓ SERÁ EXECUTADA SE NÃO ESTIVER EM CONFIRMAÇÃO PENDENTE) ---
-    logger.debug(f"ORCHESTRATOR | No specific intent detected. Proceeding with main inference flow.")
+    # --- 7. Lógica Principal de Inferência (SÓ SERÁ EXECUTADA SE NÃO ESTIVER EM CONFIRMAÇÃO PENDENTE OU REQUISIÇÃO DIRETA) ---
+    logger.debug(f"ORCHESTRATOR | No specific intent or direct action detected. Proceeding with LLM inference flow.")
     
-    # 6.1. Processamento de Input para Gemini
+    # 7.1. Processamento de Input para Gemini
     logger.debug(f"ORCHESTRATOR | Calling parse_incoming_input for message: '{user_message_for_processing[:50] if user_message_for_processing else '[no message]'}'")
     input_parser_results = await asyncio.to_thread(parse_incoming_input, user_message_for_processing, uploaded_file_data)
     user_prompt_parts = input_parser_results['prompt_parts_for_gemini']
@@ -552,7 +519,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
     logger.debug(f"ORCHESTRATOR | Input parsed. Model selected: {gemini_final_model}")
 
 
-    # 6.2. Detecção e Atualização de Configurações de Perfil (Direto)
+    # 7.2. Detecção e Atualização de Configurações de Perfil (Direto)
     logger.debug(f"ORCHESTRATOR | Calling parse_and_update_profile_settings.")
     profile_settings_results = await parse_and_update_profile_settings(user_id, user_message_for_processing, user_profile_template_content)
     if profile_settings_results.get("profile_updated"):
@@ -561,64 +528,57 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         user_profile = await get_user_profile_data(user_id, user_profile_template_content) # Recarrega o perfil após a atualização
         response_payload["response"] = direct_action_message
         response_payload["status"] = "success"
-        response_payload["debug_info"] = {"intent_detected": "configuracao_perfil", "backend_action_result_status": "success"} # Renomeado para consistência
-        if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
+        response_payload["debug_info"] = {"intent_detected": "configuracao_perfil", "backend_action_result_status": "success"} 
+        if mode_debug_on: response_payload["debug_info"].setdefault("orchestrator_debug_log", []).extend(debug_info_logs)
         await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
         return {"response_payload": response_payload}
 
-    # 6.3. Extração de Intenções CRUD/Rotina/Calendar pela LLM
+    # 7.3. Extração de Intenções CRUD/Rotina pela LLM
     logger.debug(f"ORCHESTRATOR | Calling _extract_llm_action_intent.")
-    # Renomeado de crud_intent_data para action_intent_data para refletir o escopo mais amplo
-    action_intent_data = await _extract_llm_action_intent(user_id, user_message_for_processing, full_history, gemini_api_key, gemini_text_model, user_profile, all_routines) # Passa profile e rotinas
+    action_intent_data = await _extract_llm_action_intent(user_id, user_message_for_processing, full_history, gemini_api_key, gemini_text_model, user_profile, all_routines)
     intent_detected_in_orchestrator = action_intent_data.get("intent_detected", "conversa")
     logger.debug(f"ORCHESTRATOR | LLM intent extraction result: {intent_detected_in_orchestrator}")
 
 
-    # 6.4. Processamento de Intenções (Task, Project, Routine ou Google Calendar)
-    if intent_detected_in_orchestrator in ["task", "project", "routine", "google_calendar"]:
+    # 7.4. Processamento de Intenções LLM (Task, Project, Routine)
+    if intent_detected_in_orchestrator in ["task", "project", "routine"]: # Google Calendar REMOVIDO AQUI
         logger.debug(f"ORCHESTRATOR | Detected LLM intent: {intent_detected_in_orchestrator}.")
         item_type = action_intent_data['intent_detected']
         action = action_intent_data['action']
         item_details = action_intent_data['item_details']
-        llm_generated_confirmation_message = action_intent_data.get('confirmation_message') # Pode ser null
+        llm_generated_confirmation_message = action_intent_data.get('confirmation_message')
 
-        # Usar item_details como base para o payload de confirmação, já que LLM pode adicionar campos específicos
         provisional_payload_data = item_details.copy() 
 
-        # A data para aplicar a rotina ou sincronizar o calendário está no nível superior
-        target_date_or_sync_start_date = action_intent_data.get('date') # Para routine/apply_routine
-        sync_end_date = item_details.get('end_date') # Para google_calendar/sync_calendar
+        target_date_for_apply = action_intent_data.get('date') 
 
         provisional_payload = {
             "user_id": user_id,
             "item_type": item_type,
             "action": action,
-            "item_id": item_details.get("id"), # ID do item para CRUD ou ID da rotina para apply_routine
-            "data": provisional_payload_data, # Contém os detalhes específicos para cada tipo (task_description, routine_name, sync_details, etc.)
-            "date": target_date_or_sync_start_date, # Usado para apply_routine ou sync_calendar como start_date
-            "end_date": sync_end_date # Usado para sync_calendar
+            "item_id": item_details.get("id"), 
+            "data": provisional_payload_data, 
+            "date": target_date_for_apply, 
         }
 
-        confirmation_message = llm_generated_confirmation_message # Prioriza a mensagem do LLM
+        confirmation_message = llm_generated_confirmation_message 
 
         if item_type == 'task':
-            task_description = item_details.get("description") # LLM deveria usar 'description' para tasks
-            if not task_description: # Fallback para 'name' caso o LLM ainda use
+            task_description = item_details.get("description")
+            if not task_description:
                 task_description = item_details.get("name") 
             
             task_date = provisional_payload_data.get("date") 
             task_time = provisional_payload_data.get("time")
             task_duration = provisional_payload_data.get("duration_minutes")
 
-            # Validação para criação de tarefa (agora inclui hora)
             if action == 'create' and (not task_description or not task_date or not task_time):
                 response_payload["response"] = "Para criar uma tarefa, preciso da descrição, data e hora. Por favor, seja mais específico."
                 response_payload["status"] = "error"
-                if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
+                if mode_debug_on: response_payload["debug_info"].setdefault("orchestrator_debug_log", []).extend(debug_info_logs)
                 await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
                 return {"response_payload": response_payload}
 
-            # Lógica de correção de data (se no passado, ajustar para ano corrente/próximo)
             if task_date:
                 try:
                     parsed_date_obj = datetime.strptime(task_date, "%Y-%m-%d").date()
@@ -635,17 +595,14 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 except ValueError as ve:
                     logger.warning(f"ORCHESTRATOR | Task date '{task_date}' from LLM could not be parsed for year correction ({ve}). Using original from LLM as fallback.", exc_info=True)
             
-            # Atualiza o provisional_payload_data que será salvo em data
             provisional_payload['data']['description'] = task_description
             provisional_payload['data']['date'] = task_date
             provisional_payload['data']['time'] = task_time
             provisional_payload['data']['duration_minutes'] = task_duration
-            # Se a ação é 'complete', garantir que o status 'completed' seja true
             if action == 'complete':
-                provisional_payload['action'] = 'update' # 'complete' é um update no crud_orchestrator
+                provisional_payload['action'] = 'update'
                 provisional_payload['data']['completed'] = True
 
-            # Mensagem de confirmação padrão se o LLM não forneceu uma específica
             if not confirmation_message:
                 time_display = f" às {task_time}" if task_time else ""
                 duration_display = f" por {task_duration} minutos" if task_duration else ""
@@ -659,11 +616,10 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             if action == 'create' and not project_name:
                 response_payload["response"] = "Não consegui extrair o nome do projeto. Por favor, seja mais específico."
                 response_payload["status"] = "error"
-                if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
+                if mode_debug_on: response_payload["debug_info"].setdefault("orchestrator_debug_log", []).extend(debug_info_logs)
                 await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
                 return {"response_payload": response_payload}
             
-            # Mensagem de confirmação padrão se o LLM não forneceu uma específica
             if not confirmation_message:
                 if action == 'create': confirmation_message = f"Confirma que deseja criar o projeto '{project_name}'?"
                 elif action == 'update': confirmation_message = f"Confirma que deseja atualizar o projeto '{project_name}'?"
@@ -672,80 +628,74 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         
         elif item_type == 'routine':
             routine_name = item_details.get("routine_name")
-            # Para 'apply_routine', a data vem no nível superior do JSON do LLM
             target_date_for_apply = action_intent_data.get('date') 
             
             if action == 'create':
-                if not routine_name or not item_details.get('schedule'): # Rotina precisa de nome e schedule para criar
+                if not routine_name or not item_details.get('schedule'):
                     response_payload["response"] = "Para criar uma rotina, preciso do nome e dos itens/tarefas que a compõem."
                     response_payload["status"] = "error"
-                    if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
+                    if mode_debug_on: response_payload["debug_info"].setdefault("orchestrator_debug_log", []).extend(debug_info_logs)
                     await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
                     return {"response_payload": response_payload}
                 
-                # Garantir que cada item do schedule tenha um ID único
                 for task_item in item_details.get('schedule', []):
                     if not task_item.get('id'):
                         task_item['id'] = str(uuid.uuid4())
                 
-                # A data do payload de confirmação para rotinas de criação não é aplicável
                 provisional_payload['date'] = None
-                # O ID da rotina é gerado no save_routine_template se não fornecido
-                # provisional_payload['item_id'] = item_details.get('id') # Pode vir do LLM
+                # Adiciona o recurrence_rule extraído pelo LLM ao payload
+                provisional_payload['data']['recurrence_rule'] = item_details.get('recurrence_rule', None)
 
-                # Mensagem de confirmação padrão se o LLM não forneceu uma específica
                 if not confirmation_message: confirmation_message = f"Confirma a criação da rotina '{routine_name}' com {len(item_details.get('schedule', []))} tarefas?"
+                if provisional_payload['data']['recurrence_rule']:
+                    confirmation_message += f" Repetindo: {provisional_payload['data']['recurrence_rule']}?"
 
             elif action == 'apply_routine':
-                routine_id_from_llm = item_details.get("id") # ID direto da rotina
-                routine_name_from_llm = item_details.get("routine_name") # Nome da rotina
+                routine_id_from_llm = item_details.get("id") 
+                routine_name_from_llm = item_details.get("routine_name") 
 
-                # Ajustar o provisional_payload para aplicar rotina
-                provisional_payload['item_id'] = routine_id_from_llm # Passa o ID se veio
-                provisional_payload['date'] = target_date_for_apply # Data alvo para apply_routine
-                # O 'data' no provisional_payload para 'apply_routine' conterá apenas name/id para busca
+                provisional_payload['item_id'] = routine_id_from_llm 
+                provisional_payload['date'] = target_date_for_apply 
                 provisional_payload['data'] = {"name": routine_name_from_llm, "id": routine_id_from_llm} 
 
                 if not target_date_for_apply:
                     response_payload["response"] = "Para aplicar uma rotina, preciso saber a data alvo (ex: 'para amanhã')."
                     response_payload["status"] = "error"
-                    if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
+                    if mode_debug_on: response_payload["debug_info"].setdefault("orchestrator_debug_log", []).extend(debug_info_logs)
                     await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
                     return {"response_payload": response_payload}
 
-                # Se o LLM forneceu o nome da rotina mas não o ID, tentar encontrar pelo nome para a mensagem de confirmação
                 if not routine_id_from_llm and routine_name_from_llm:
                     found_routine = next((r for r in all_routines if r.get('name', '').lower() == routine_name_from_llm.lower()), None)
                     if found_routine:
-                        provisional_payload['item_id'] = found_routine['id'] # Atualiza o ID no payload
+                        provisional_payload['item_id'] = found_routine['id']
                         confirmation_message = f"Confirma a aplicação da rotina '{routine_name_from_llm}' para {target_date_for_apply}?"
                     else:
                         response_payload["response"] = f"Não encontrei nenhuma rotina chamada '{routine_name_from_llm}'. Por favor, verifique o nome ou crie a rotina primeiro."
                         response_payload["status"] = "error"
-                        if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
+                        if mode_debug_on: response_payload["debug_info"].setdefault("orchestrator_debug_log", []).extend(debug_info_logs)
                         await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
                         return {"response_payload": response_payload}
-                elif routine_id_from_llm and target_date_for_apply: # Já tem ID e data
+                elif routine_id_from_llm and target_date_for_apply:
                      confirmation_message = f"Confirma a aplicação da rotina para {target_date_for_apply}?"
-                else: # Não tem nem nome nem ID
+                else: 
                     response_payload["response"] = "Não consegui identificar qual rotina aplicar. Por favor, seja mais específico."
                     response_payload["status"] = "error"
-                    if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
+                    if mode_debug_on: response_payload["debug_info"].setdefault("orchestrator_debug_log", []).extend(debug_info_logs)
                     await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
                     return {"response_payload": response_payload}
             
-            elif action == 'delete': # Excluir uma rotina
+            elif action == 'delete':
                 routine_id_to_delete = item_details.get("id")
                 routine_name_to_delete = item_details.get("routine_name")
                 
                 if not routine_id_to_delete and not routine_name_to_delete:
                     response_payload["response"] = "Para excluir uma rotina, preciso do nome ou ID dela."
                     response_payload["status"] = "error"
-                    if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
+                    if mode_debug_on: response_payload["debug_info"].setdefault("orchestrator_debug_log", []).extend(debug_info_logs)
                     await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
                     return {"response_payload": response_payload}
                 
-                # Se só o nome foi dado, tentar encontrar o ID
                 if not routine_id_to_delete and routine_name_to_delete:
                     found_routine = next((r for r in all_routines if r.get('name', '').lower() == routine_name_to_delete.lower()), None)
                     if found_routine:
@@ -754,66 +704,11 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                     else:
                         response_payload["response"] = f"Não encontrei nenhuma rotina chamada '{routine_name_to_delete}' para excluir."
                         response_payload["status"] = "info"
-                        if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
+                        if mode_debug_on: response_payload["debug_info"].setdefault("orchestrator_debug_log", []).extend(debug_info_logs)
                         await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
                         return {"response_payload": response_payload}
-                else: # Tem o ID ou a LLM gerou a mensagem completa
+                else: 
                     confirmation_message = f"Confirma a exclusão da rotina '{routine_name_to_delete or routine_id_to_delete}'?"
-
-        elif item_type == 'google_calendar':
-            # As datas para sincronização estão no nível superior do JSON do LLM
-            sync_start_date = action_intent_data.get('date') # Renomeado para evitar conflito
-            sync_end_date = provisional_payload_data.get('end_date') # Mantém como estava
-
-            # O provisional_payload já está com os dados do LLM, incluindo start_date/end_date em 'data'
-            # Mas o 'date' do LLM JSON virá para 'provisional_payload['date']'
-            # Reorganizar aqui para garantir que 'data' tenha 'start_date' e 'end_date'
-            if sync_start_date: # A data do LLM (action_intent_data.get('date')) é o 'start_date' para sync
-                provisional_payload['data']['start_date'] = sync_start_date
-            if sync_end_date:
-                provisional_payload['data']['end_date'] = sync_end_date
-
-            if action == 'connect_calendar':
-                current_creds = await google_calendar_auth_manager.get_credentials(user_id)
-                if current_creds:
-                    # Se já conectado, a intenção de "conectar" se transforma em "sincronizar"
-                    provisional_payload = {
-                        "user_id": user_id,
-                        "item_type": "google_calendar",
-                        "action": "sync_calendar", # Muda a ação para sync
-                        "data": {"start_date": datetime.now(timezone.utc).isoformat(), "end_date": (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()},
-                        "date": datetime.now(timezone.utc).isoformat(), # start_date do sync
-                        "end_date": (datetime.now(timezone.utc) + timedelta(days=7)).isoformat() # end_date do sync
-                    }
-                    confirmation_message = "Você já está conectado ao Google Calendar. Deseja sincronizar seus eventos para os próximos 7 dias?"
-                else:
-                    confirmation_message = "Você gostaria de conectar a EIXA ao seu Google Calendar para que eu possa ver seus eventos e ajudá-lo melhor?"
-            
-            elif action == 'sync_calendar':
-                # Define um período padrão se o LLM não especificar (ex: próxima semana)
-                if not sync_start_date or not sync_end_date:
-                    start_date_obj = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-                    end_date_obj = start_date_obj + timedelta(days=7)
-                    provisional_payload['data']['start_date'] = start_date_obj.isoformat()
-                    provisional_payload['data']['end_date'] = end_date_obj.isoformat()
-                    provisional_payload['date'] = start_date_obj.isoformat() # Atualiza o nível superior também
-                    provisional_payload['end_date'] = end_date_obj.isoformat() # Atualiza o nível superior também
-                    confirmation_message = f"Confirma a sincronização dos eventos do seu Google Calendar para os próximos 7 dias (de {start_date_obj.strftime('%d/%m')} a {end_date_obj.strftime('%d/%m')})?"
-                else:
-                    confirmation_message = f"Confirma a sincronização dos eventos do seu Google Calendar de {sync_start_date} a {sync_end_date}?"
-                
-                # Verifica se há credenciais antes de prosseguir para a confirmação.
-                # Se não houver, muda a ação para "connect_calendar" e pede para conectar primeiro.
-                creds = await google_calendar_auth_manager.get_credentials(user_id)
-                if not creds:
-                    response_payload["response"] = "Para sincronizar seus eventos do Google Calendar, primeiro preciso que você conecte sua conta Google à EIXA. Gostaria de fazer isso agora?"
-                    response_payload["status"] = "info"
-                    # Mudar o payload para pedir confirmação de "connect_calendar"
-                    provisional_payload = {"user_id": user_id, "item_type": "google_calendar", "action": "connect_calendar", "data": {}}
-                    confirmation_message = "Para sincronizar, preciso que você conecte seu Google Calendar. Confirma que quer conectar agora?"
-
-            elif action == 'disconnect_calendar':
-                confirmation_message = "Confirma que deseja desconectar sua conta Google da EIXA? Não poderei mais ver seus eventos do Google Calendar."
 
         # Salva o estado de confirmação para todas as ações
         await set_confirmation_state(
@@ -835,12 +730,12 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             "provisional_payload": provisional_payload,
         }
         await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
-        if mode_debug_on: response_payload["debug_info"]["orchestrator_debug_log"].extend(debug_info_logs)
+        if mode_debug_on: response_payload["debug_info"].setdefault("orchestrator_debug_log", []).extend(debug_info_logs)
         return {"response_payload": response_payload}
 
 
-    # --- 7. Lógica de Conversação Genérica com LLM (Se nenhuma intenção específica foi tratada) ---
-    logger.debug(f"ORCHESTRATOR | No specific intent detected. Proceeding with main inference flow.")
+    # --- 8. Lógica de Conversação Genérica com LLM (Se nenhuma intenção específica foi tratada) ---
+    logger.debug(f"ORCHESTRATOR | No specific intent or direct action detected. Proceeding with main inference flow.")
     
     conversation_history = []
     recent_history_for_llm = full_history[-5:]
@@ -885,18 +780,15 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
     for date_key, day_data in current_tasks.items():
         for task_data in day_data.get('tasks', []):
             status = 'Concluída' if task_data.get('completed', False) else 'Pendente'
-            # INCLUINDO HORA E DURAÇÃO NAS TAREFAS DO CONTEXTO
             time_info = f" às {task_data.get('time', 'N/A')}" if task_data.get('time') else ""
             duration_info = f" por {task_data.get('duration_minutes', 'N/A')} minutos" if task_data.get('duration_minutes') else ""
             
-            # Adicionado: Informação sobre a origem da tarefa (Rotina, Google Calendar, etc.)
             origin_info = ""
             if task_data.get('origin') == 'routine':
                 origin_info = " (Origem: Rotina)"
             elif task_data.get('origin') == 'google_calendar':
                 origin_info = " (Origem: Google Calendar)"
             
-            # Adicionado ID e Data de Criação (se existirem)
             task_id_info = f" (ID: {task_data.get('id', 'N/A')})" if task_data.get('id') else ""
             created_at_info = f" (Adicionada em: {task_data.get('created_at', 'N/A')})" if task_data.get('created_at') else ""
 
@@ -917,9 +809,9 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             routine_id = routine.get('id', 'N/A')
             routine_desc = routine.get('description', 'N/A')
             routine_days = ", ".join(routine.get('applies_to_days', [])) if routine.get('applies_to_days') else 'Todos os dias'
+            recurrence_rule_info = f", Recorrência: {routine.get('recurrence_rule', 'N/A')}" if routine.get('recurrence_rule') else "" # NOVO
             schedule_summary = []
             for item in routine.get('schedule', []):
-                # Inclui ID e Created_at dos itens da rotina no contexto
                 item_id = item.get('id', 'N/A')
                 item_time = item.get('time', 'N/A')
                 item_desc = item.get('description', 'N/A')
@@ -927,7 +819,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 item_created_at = item.get('created_at', 'N/A')
                 schedule_summary.append(f"({item_id}) {item_time} - {item_desc} ({item_duration}min, Criada em: {item_created_at})")
             
-            formatted_routines.append(f"- Rotina '{routine_name}' (ID: {routine_id}, Descrição: {routine_desc}, Aplica-se a: {routine_days}). Itens: {'; '.join(schedule_summary)}")
+            formatted_routines.append(f"- Rotina '{routine_name}' (ID: {routine_id}, Descrição: {routine_desc}, Aplica-se a: {routine_days}{recurrence_rule_info}). Itens: {'; '.join(schedule_summary)}")
 
 
     if flat_current_tasks:
@@ -942,10 +834,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         contexto_critico += "\nRotinas Salvas:\n" + "\n".join(formatted_routines) + "\n"
     else: contexto_critico += "\nNenhuma rotina salva.\n"
 
-    # NOVO: Adiciona status de conexão com Google Calendar
     google_calendar_status = "Não Conectado"
-    # Você já tem a instância de google_calendar_auth_manager.
-    # A chamada get_credentials retorna None se não há credenciais ou elas são inválidas.
     if await google_calendar_auth_manager.get_credentials(user_id):
         google_calendar_status = "Conectado"
     contexto_critico += f"\nStatus do Google Calendar: {google_calendar_status}\n"
@@ -1118,8 +1007,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         emotional_tags.append("rotina_criada")
     if intent_detected_in_orchestrator == "routine" and action == "apply_routine":
         emotional_tags.append("rotina_aplicada")
-    if intent_detected_in_orchestrator == "google_calendar" and (action == "sync_calendar" or action == "connect_calendar"):
-        emotional_tags.append("google_calendar_integrado")
+    # Removido tag de google_calendar_integrado aqui, pois agora é uma ação direta
 
     sabotage_patterns_detected = await get_sabotage_patterns(user_id, 20, user_profile)
     logger.debug(f"ORCHESTRATOR | Raw sabotage patterns detected: {sabotage_patterns_detected}")
