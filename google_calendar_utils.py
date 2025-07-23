@@ -1,9 +1,12 @@
+# --- START OF FILE google_calendar_utils.py ---
+
 import asyncio
 import os
 import logging
 from datetime import datetime, timedelta, timezone
 import uuid
 from urllib.parse import urlparse, parse_qs
+import json # Adicionado 'json' para creds.to_json() e json.loads()
 
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
@@ -149,6 +152,8 @@ class GoogleCalendarUtils:
         
         try:
             doc_ref = await self._get_credentials_doc_ref(user_id)
+            # Firestore.DELETE_FIELD needs to be imported or set from firestore module
+            from google.cloud import firestore # Temporarily import here if not global
             await asyncio.to_thread(doc_ref.set, {"oauth_state": unique_state}, merge=True)
             CALENDAR_UTILS_LOGGER.info(f"OAuth state '{unique_state}' stored for user '{user_id}'.")
         except Exception as e:
@@ -201,6 +206,8 @@ class GoogleCalendarUtils:
             return {"status": "error", "message": "Erro de segurança: ID de usuário inválido no state.", "user_id": None}
 
         stored_doc_data = await self._get_stored_credentials(user_id)
+        # Import firestore here to use firestore.DELETE_FIELD
+        from google.cloud import firestore
         if not stored_doc_data or stored_doc_data.get("oauth_state") != state:
             CALENDAR_UTILS_LOGGER.warning(f"State recebido '{state}' não corresponde ao armazenado para user '{user_id}' ou não encontrado. Potencial CSRF ou reuso.")
             doc_ref = await self._get_credentials_doc_ref(user_id)
@@ -361,3 +368,4 @@ class GoogleCalendarUtils:
         except Exception as e:
             CALENDAR_UTILS_LOGGER.error(f"Erro inesperado ao deletar evento {event_id} do Google Calendar para {user_id}: {e}", exc_info=True)
             return False
+# --- END OF FILE google_calendar_utils.py ---

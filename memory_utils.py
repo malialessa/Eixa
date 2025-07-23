@@ -1,3 +1,5 @@
+# --- START OF FILE memory_utils.py ---
+
 import logging
 import asyncio
 from datetime import datetime, timedelta, timezone
@@ -92,8 +94,6 @@ def detect_sabotage_patterns(texts: list[str], user_profile: Dict[str, Any]) -> 
 async def get_sabotage_patterns(user_id: str, n: int = 20, user_profile: Dict[str, Any] = None) -> dict:
     logger.debug(f"Analisando últimas {n} interações para padrões de sabotagem do usuário '{user_id}'.")
 
-    # A importação está correta aqui, o que significa que o problema não é o ciclo de importação.
-    # from eixa_data import get_user_history # Já estava no seu código.
     history = await eixa_data.get_user_history(user_id, 'interactions', n) # Alterei para usar eixa_data.get_user_history
 
     if not history:
@@ -108,3 +108,4 @@ async def get_sabotage_patterns(user_id: str, n: int = 20, user_profile: Dict[st
         logger.info(f"Padrões de sabotagem detectados para o usuário '{user_id}': {detected}")
 
     return detected
+# --- END OF FILE memory_utils.py ---
