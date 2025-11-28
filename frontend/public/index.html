@@ -816,8 +816,22 @@
             content: '○'; color: var(--primary-accent);
             position: absolute; left: 0;
         }
-        .project-microtasks-list li { padding-left: var(--spacing-md); position: relative; }
-        .project-microtasks-list li.completed { text-decoration: line-through; opacity: 0.6; }
+        .project-microtasks-list li { 
+            padding-left: var(--spacing-md); 
+            position: relative; 
+            cursor: pointer;
+            transition: all 0.2s ease;
+            padding: var(--spacing-xs) 0 var(--spacing-xs) var(--spacing-md);
+            border-radius: var(--border-radius-sm);
+        }
+        .project-microtasks-list li:hover {
+            background-color: var(--bg-hover);
+            padding-left: calc(var(--spacing-md) + 4px);
+        }
+        .project-microtasks-list li.completed { 
+            text-decoration: line-through; 
+            opacity: 0.6; 
+        }
         .project-microtasks-list li.completed::before { content: '●'; }
 
         .card-actions { display: flex; justify-content: flex-end; margin-top: auto; padding-top: var(--spacing-md); }
@@ -981,6 +995,64 @@
             color: var(--success-green) !important;
             font-size: 16px !important;
             filter: drop-shadow(0 0 2px var(--success-green));
+        }
+
+        /* Diagnostic Cards */
+        .diagnostic-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius-lg);
+            padding: var(--spacing-lg);
+            margin-bottom: var(--spacing-lg);
+            box-shadow: var(--shadow-medium);
+            transition: all 0.3s ease;
+        }
+        
+        .diagnostic-card:hover {
+            box-shadow: var(--shadow-large);
+            transform: translateY(-2px);
+        }
+        
+        .diagnostic-card h3 {
+            color: var(--eixa-dark-purple);
+            font-size: 1.4em;
+            margin-bottom: var(--spacing-sm);
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+        }
+        
+        .diagnostic-date {
+            color: var(--text-secondary);
+            font-size: 0.9em;
+            margin-bottom: var(--spacing-md);
+            font-style: italic;
+        }
+        
+        .diagnostic-content {
+            color: var(--text-primary);
+            line-height: 1.6;
+            margin-bottom: var(--spacing-md);
+        }
+        
+        .diagnostic-insights {
+            background: linear-gradient(135deg, rgba(147, 51, 234, 0.05), rgba(147, 51, 234, 0.1));
+            border-left: 3px solid var(--eixa-purple);
+            padding: var(--spacing-md);
+            margin-top: var(--spacing-md);
+            border-radius: var(--border-radius-md);
+        }
+        
+        .diagnostic-metrics {
+            background: var(--bg-secondary);
+            padding: var(--spacing-md);
+            border-radius: var(--border-radius-md);
+            margin-top: var(--spacing-md);
+            font-size: 0.95em;
+        }
+        
+        .diagnostic-metrics strong {
+            color: var(--eixa-dark-purple);
         }
 
         /* SEÇÃO PARA EXIBIR TEMPLATES DE ROTINA, POSSIVELMENTE NO PERFIL OU EM OUTRA VIEW MENOS PROMINENTE */
@@ -1916,6 +1988,13 @@
             <p class="view-intro">Registros de momentos e emoções para sua reflexão.</p>
             <div id="emotionalMemoriesDisplay" class="content-display-area cards-grid"></div>
         </div>
+        <div id="diagnosticoViewContent" class="view-content" role="tabpanel" aria-labelledby="diagnostico-tab">
+            <header class="view-header">
+                <h2 class="view-content-title">Diagnóstico Semanal</h2>
+            </header>
+            <p class="view-intro">Seus checkpoints e autoavaliações para acompanhar sua evolução.</p>
+            <div id="diagnosticoDisplay" class="content-display-area"></div>
+        </div>
         <div id="longTermMemoryViewContent" class="view-content" role="tabpanel" aria-labelledby="long-term-memory-tab">
             <header class="view-header">
                 <h2 class="view-content-title">Memória de Longo Prazo (Perfil)</h2>
@@ -2453,6 +2532,16 @@
                 confirmTaskMarkPending: 'Marcar como PENDENTE?',
                 confirmTaskDeleteInstance: 'Excluir APENAS esta tarefa?',
                 viewRoutineTemplate: 'Ver/Editar Template da Rotina',
+                noDataMessageDiagnostico: 'Nenhum diagnóstico disponível no momento. Continue usando a EIXA para gerar seus checkpoints!',
+                acceptSuggestion: 'Aceitar',
+                rejectSuggestion: 'Rejeitar',
+                suggestionAccepted: 'Sugestão aceita!',
+                suggestionRejected: 'Sugestão rejeitada.',
+                applyRoutineToDay: 'Aplicar ao Dia',
+                deleteRoutine: 'Excluir Rotina',
+                confirmDeleteRoutine: 'Tem certeza que deseja excluir esta rotina?',
+                routineDeleted: 'Rotina excluída com sucesso!',
+                routineApplied: 'Rotina aplicada ao dia com sucesso!',
             };
 
             let currentUser = null; 
@@ -2625,6 +2714,10 @@
                 // Elementos dentro de #emotionalMemoriesViewContent
                 elements.emotionalMemoriesViewContent = document.getElementById('emotionalMemoriesViewContent');
                 elements.emotionalMemoriesDisplay = document.getElementById('emotionalMemoriesDisplay');
+                
+                // Elementos dentro de #diagnosticoViewContent
+                elements.diagnosticoViewContent = document.getElementById('diagnosticoViewContent');
+                elements.diagnosticoDisplay = document.getElementById('diagnosticoDisplay');
                 
                 // Elementos dentro de #longTermMemoryViewContent
                 elements.longTermMemoryViewContent = document.getElementById('longTermMemoryViewContent');
@@ -2914,6 +3007,14 @@
                         sendCrudRequest('project', 'delete', projectId);
                     });
                 }
+                else if (target.closest('.project-microtasks-list li')) {
+                    const li = target.closest('.project-microtasks-list li');
+                    const projectCard = target.closest('.project-card');
+                    const projectId = projectCard.dataset.id;
+                    const microtaskIndex = Array.from(li.parentElement.children).indexOf(li);
+                    console.log(`DEBUG: Toggling microtask ${microtaskIndex} for project: ${projectId}`);
+                    handleToggleMicrotask(projectId, microtaskIndex);
+                }
                 else if (target.closest('.modal-microtask-item .remove-microtask-button')) {
                     console.log("DEBUG: Removing microtask from modal.");
                     target.closest('.modal-microtask-item').remove();
@@ -3181,6 +3282,7 @@
                     else if (viewName === 'projetos' && elements.projetosDisplay) displayProjects(viewData.projetos);
                     else if (viewName === 'rotinasTemplatesViewContent'.replace('ViewContent', '') && elements.rotinasDisplay) displayRoutinesTemplates(viewData.routines); 
                     else if (viewName === 'emotionalMemories' && elements.emotionalMemoriesDisplay) displayEmotionalMemories(viewData.emotional_memories);  
+                    else if (viewName === 'diagnostico' && elements.diagnosticoDisplay) displayDiagnostico(viewData.diagnostico || viewData.checkpoints || viewData.self_evaluations);
                     else if (viewName === 'longTermMemory' && elements.longTermMemoryDisplay) displayLongTermMemory(viewData.long_term_memory);  
                     else console.warn("DEBUG: No display function or display element found for view:", viewName);
                 } else {
@@ -3472,6 +3574,72 @@
                     displayArea.appendChild(card);
                 });
                 console.log(`DEBUG: Displayed ${memoriesData.length} emotional memories.`);
+            }
+
+            // displayDiagnostico - exibe checkpoints semanais e autoavaliações
+            async function displayDiagnostico(diagnosticoData) {
+                console.log("DEBUG: displayDiagnostico called with data:", diagnosticoData);
+                const displayArea = elements.diagnosticoDisplay;
+                if (!displayArea) {
+                    console.warn("DEBUG: diagnosticoDisplay element not found.");
+                    return;
+                }
+                displayArea.innerHTML = '';
+
+                if (!diagnosticoData || diagnosticoData.length === 0) {
+                    displayArea.innerHTML = `<p class="no-data-message">${i18nStrings.noDataMessageDiagnostico}</p>`;
+                    console.log("DEBUG: No diagnostico data found.");
+                    return;
+                }
+
+                // Criar cards para cada checkpoint/self-evaluation
+                diagnosticoData.forEach(item => {
+                    const card = document.createElement('div');
+                    card.className = 'diagnostic-card';
+                    
+                    const title = document.createElement('h3');
+                    title.textContent = item.title || 'Checkpoint';
+                    card.appendChild(title);
+
+                    const date = document.createElement('p');
+                    date.className = 'diagnostic-date';
+                    date.innerHTML = `<strong>Data:</strong> ${formatDateForDisplay(item.date || item.timestamp)}`;
+                    card.appendChild(date);
+
+                    const content = document.createElement('div');
+                    content.className = 'diagnostic-content';
+                    content.innerHTML = formatMarkdownToHTML(item.content || item.analysis || '');
+                    card.appendChild(content);
+
+                    // Se houver insights ou padrões identificados
+                    if (item.insights || item.patterns) {
+                        const insights = document.createElement('div');
+                        insights.className = 'diagnostic-insights';
+                        insights.innerHTML = `<strong>Insights:</strong><br>${formatMarkdownToHTML(item.insights || item.patterns || '')}`;
+                        card.appendChild(insights);
+                    }
+
+                    // Se houver score ou métricas
+                    if (item.score !== undefined || item.metrics) {
+                        const metrics = document.createElement('div');
+                        metrics.className = 'diagnostic-metrics';
+                        let metricsHTML = '<strong>Métricas:</strong><br>';
+                        if (item.score !== undefined) {
+                            metricsHTML += `Score: ${item.score}/10<br>`;
+                        }
+                        if (item.metrics) {
+                            for (const [key, value] of Object.entries(item.metrics)) {
+                                metricsHTML += `${key}: ${value}<br>`;
+                            }
+                        }
+                        metrics.innerHTML = metricsHTML;
+                        card.appendChild(metrics);
+                    }
+
+                    displayArea.appendChild(card);
+                });
+
+                console.log(`DEBUG: Displayed ${diagnosticoData.length} diagnostic items.`);
             }
 
             // displayLongTermMemory para incluir status do Google Calendar e botão para Templates de Rotina
@@ -4419,6 +4587,138 @@
                 });
             }
 
+            // Handlers para Projetos
+            async function handleEditProject(projectId) {
+                console.log("DEBUG: handleEditProject called for project:", projectId);
+                if (!currentUser) { showToast(i18nStrings.unauthenticated, 'error'); return; }
+                
+                currentEditProjectId = projectId;
+                const project = await getProjectById(projectId);
+                if (!project) {
+                    showToast("Projeto não encontrado.", 'error');
+                    return;
+                }
+                
+                // Preencher modal de criação/edição de projeto com dados existentes
+                if (elements.projectNameInput) elements.projectNameInput.value = project.name || '';
+                if (elements.projectDescriptionTextarea) elements.projectDescriptionTextarea.value = project.description || '';
+                if (elements.projectDeadlineInput) elements.projectDeadlineInput.value = project.deadline || '';
+                if (elements.projectStatusSelect) elements.projectStatusSelect.value = project.status || 'planning';
+                
+                // Abrir modal
+                if (elements.createProjectModal) elements.createProjectModal.style.display = 'flex';
+            }
+
+            async function handleDeleteProject(projectId) {
+                console.log("DEBUG: handleDeleteProject called for project:", projectId);
+                if (!currentUser) { showToast(i18nStrings.unauthenticated, 'error'); return; }
+                
+                showConfirmationModal("Tem certeza que deseja excluir este projeto?", async () => {
+                    await sendCrudRequest('project', 'delete', projectId);
+                });
+            }
+
+            async function handleToggleMicrotask(projectId, microtaskIndex) {
+                console.log("DEBUG: handleToggleMicrotask called for project:", projectId, "microtask:", microtaskIndex);
+                if (!currentUser) { showToast(i18nStrings.unauthenticated, 'error'); return; }
+                
+                const project = await getProjectById(projectId);
+                if (!project || !project.micro_tasks || !project.micro_tasks[microtaskIndex]) {
+                    showToast("Microtarefa não encontrada.", 'error');
+                    return;
+                }
+                
+                // Toggle completed status
+                project.micro_tasks[microtaskIndex].completed = !project.micro_tasks[microtaskIndex].completed;
+                
+                // Update project with new microtasks
+                await sendCrudRequest('project', 'update', projectId, {
+                    micro_tasks: project.micro_tasks
+                });
+            }
+
+            async function getProjectById(projectId) {
+                const payload = {
+                    user_id: currentUser.uid,
+                    request_type: 'chat_and_view',
+                    view_request: 'projetos'
+                };
+                const response = await callBackendAPI(payload);
+                if (response?.status === 'success' && response.html_view_data?.projetos) {
+                    return response.html_view_data.projetos.find(p => p.id === projectId);
+                }
+                return null;
+            }
+
+            // Handlers para Rotinas
+            async function handleApplyRoutine(routineId, date) {
+                console.log("DEBUG: handleApplyRoutine called for routine:", routineId, "date:", date);
+                if (!currentUser) { showToast(i18nStrings.unauthenticated, 'error'); return; }
+                
+                showGlobalLoader();
+                try {
+                    const payload = {
+                        user_id: currentUser.uid,
+                        request_type: 'crud_action',
+                        item_type: 'routine',
+                        action: 'apply_to_day',
+                        item_id: routineId,
+                        data: { date: date || new Date().toISOString().split('T')[0] }
+                    };
+                    const response = await callBackendAPI(payload);
+                    if (response?.status === 'success') {
+                        showToast(i18nStrings.routineApplied, 'success');
+                        if (response.html_view_data?.agenda) {
+                            displayAgenda(response.html_view_data.agenda);
+                        }
+                    } else {
+                        showToast(response?.message || "Erro ao aplicar rotina.", 'error');
+                    }
+                } catch (error) {
+                    showToast("Erro ao aplicar rotina: " + error.message, 'error');
+                    console.error("DEBUG: Error in handleApplyRoutine:", error);
+                } finally {
+                    hideGlobalLoader();
+                }
+            }
+
+            async function handleDeleteRoutine(routineId) {
+                console.log("DEBUG: handleDeleteRoutine called for routine:", routineId);
+                if (!currentUser) { showToast(i18nStrings.unauthenticated, 'error'); return; }
+                
+                showConfirmationModal(i18nStrings.confirmDeleteRoutine, async () => {
+                    await sendCrudRequest('routine', 'delete', routineId);
+                });
+            }
+
+            // Handlers para Sugestões
+            async function handleAcceptSuggestion(suggestionId, suggestionType, suggestionData) {
+                console.log("DEBUG: handleAcceptSuggestion called:", suggestionId, suggestionType, suggestionData);
+                if (!currentUser) { showToast(i18nStrings.unauthenticated, 'error'); return; }
+                
+                showGlobalLoader();
+                try {
+                    // Create task or project based on suggestion
+                    if (suggestionType === 'task' || suggestionType === 'tarefa') {
+                        await sendCrudRequest('task', 'create', null, suggestionData);
+                    } else if (suggestionType === 'project' || suggestionType === 'projeto') {
+                        await sendCrudRequest('project', 'create', null, suggestionData);
+                    }
+                    showToast(i18nStrings.suggestionAccepted, 'success');
+                } catch (error) {
+                    showToast("Erro ao aceitar sugestão: " + error.message, 'error');
+                    console.error("DEBUG: Error in handleAcceptSuggestion:", error);
+                } finally {
+                    hideGlobalLoader();
+                }
+            }
+
+            async function handleRejectSuggestion(suggestionId) {
+                console.log("DEBUG: handleRejectSuggestion called:", suggestionId);
+                showToast(i18nStrings.suggestionRejected, 'info');
+                // Optionally, could send feedback to backend about rejected suggestion
+            }
+
             function setupAuth() {
                 console.log("DEBUG: setupAuth started. Setting up onAuthStateChanged listener.");
                 const authSection = elements.authSection;
@@ -4486,6 +4786,7 @@
                             rotinasTemplatesViewContent: null, rotinasDisplay: null, openAddRoutineModalBtnSecondary: null, 
                             projetosViewContent: null, projetosDisplay: null, openAddProjectModalBtn: null, 
                             emotionalMemoriesViewContent: null, emotionalMemoriesDisplay: null,
+                            diagnosticoViewContent: null, diagnosticoDisplay: null,
                             longTermMemoryViewContent: null, longTermMemoryDisplay: null,
                             viewContents: null, 
                             inputWrapper: null,
