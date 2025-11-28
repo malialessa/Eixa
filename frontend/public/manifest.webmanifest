@@ -1,0 +1,53 @@
+{
+  "name": "EIXA - Assistente Inteligente Pessoal",
+  "short_name": "EIXA",
+  "description": "Seu assistente inteligente para organizar ideias, projetos e fluxo mental com IA",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F8F7FC",
+  "theme_color": "#D0B0FF",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/assets/img/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/assets/img/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/assets/img/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ],
+  "categories": ["productivity", "lifestyle", "utilities"],
+  "shortcuts": [
+    {
+      "name": "Chat EIXA",
+      "short_name": "Chat",
+      "description": "Abrir chat com EIXA",
+      "url": "/#chat",
+      "icons": [{ "src": "/assets/img/icon-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Agenda",
+      "short_name": "Agenda",
+      "description": "Ver agenda do dia",
+      "url": "/#agenda",
+      "icons": [{ "src": "/assets/img/icon-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Projetos",
+      "short_name": "Projetos",
+      "description": "Gerenciar projetos",
+      "url": "/#projetos",
+      "icons": [{ "src": "/assets/img/icon-192x192.png", "sizes": "192x192" }]
+    }
+  ]
+}

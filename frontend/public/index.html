@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EIXA</title>
     
-        /* [COLE TODO O CSS DO ARQUIVO ORIGINAL AQUI] */
-        <style>
+    <style>
+        /* Variáveis CSS (Custom Properties) */
         :root {
             /* Modo Claro */
             --bg-primary: hsl(0, 0%, 100%); /* Fundo principal, cards, sidebar */
@@ -928,11 +928,59 @@
             top: var(--spacing-xs);
             right: var(--spacing-xs);
             display: flex;
-            gap: 2px;
+            gap: 4px;
+            align-items: center;
+            flex-wrap: wrap;
         }
         .agenda-event-block .event-icons .material-icons {
             font-size: 16px; 
             color: var(--text-secondary);
+        }
+        
+        /* Badges de origem das tarefas */
+        .event-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 0.7em;
+            font-weight: 700;
+            white-space: nowrap;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        
+        .event-badge .material-icons {
+            font-size: 12px !important;
+        }
+        
+        .badge-eixa {
+            background: linear-gradient(135deg, var(--eixa-task-bg), color-mix(in srgb, var(--eixa-task-bg) 80%, white));
+            color: var(--eixa-task-color);
+            border: 1px solid var(--eixa-task-color);
+            box-shadow: 0 2px 4px rgba(208,176,255,0.2);
+        }
+        
+        .badge-google {
+            background: linear-gradient(135deg, var(--google-calendar-event-bg), color-mix(in srgb, var(--google-calendar-event-bg) 80%, white));
+            color: var(--google-calendar-event-color);
+            border: 1px solid var(--google-calendar-event-color);
+            box-shadow: 0 2px 4px rgba(66,133,244,0.2);
+        }
+        
+        .badge-routine {
+            background: linear-gradient(135deg, var(--routine-task-bg), color-mix(in srgb, var(--routine-task-bg) 80%, white));
+            color: var(--routine-task-color);
+            border: 1px solid var(--routine-task-color);
+            box-shadow: 0 2px 4px rgba(52,168,83,0.2);
+        }
+        
+        .completion-icon {
+            color: var(--success-green) !important;
+            font-size: 16px !important;
+            filter: drop-shadow(0 0 2px var(--success-green));
         }
 
         /* SEÇÃO PARA EXIBIR TEMPLATES DE ROTINA, POSSIVELMENTE NO PERFIL OU EM OUTRA VIEW MENOS PROMINENTE */
@@ -1674,85 +1722,773 @@
     
     <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700&family=Roboto:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" as="style" onload="this.rel='stylesheet'">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700&family=Roboto:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-    <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700&family=Roboto:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet"></noscript>
+    <noscript>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700&family=Roboto:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    </noscript>
+
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+
     <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="manifest" href="/manifest.webmanifest">
 </head>
 <body class="light-mode">
 
-    <!-- O HTML do corpo do app permanece o mesmo. Apenas o script no final é alterado. -->
-    <div id="globalLoader" class="global-loader">...</div>
-    <div id="appContainer" class="app-container">
-        <aside id="sidebarMenu" class="sidebar-menu" style="display: none;">...</aside>
-        <main id="mainContentArea" class="main-content-area" style="display: none;"></main>
-        <section id="authSection" class="auth-section">...</section>
-    </div> 
-    <div id="toastContainer" class="toast-container"></div>
-    <div id="editProjectModal" class="modal"></div>
-    <div id="addTaskModal" class="modal"></div>
-    <div id="confirmationModal" class="modal"></div>
-    
-    <template id="views-template">...</template>
-    <!-- Todas as outras templates também permanecem as mesmas -->
+    <div id="globalLoader" class="global-loader" aria-live="assertive" aria-busy="true" aria-label="Carregando">
+        <img id="loader-eixa" src="./assets/img/eixa.svg" alt="Carregando EIXA" />
+    </div>
 
-    <!-- ================================================================= -->
-    <!-- SCRIPT REFATORADO PARA FIREBASE SDK -->
-    <!-- ================================================================= -->
+    <div id="appContainer" class="app-container">
+        
+        <aside id="sidebarMenu" class="sidebar-menu" style="display: none;">
+            <div class="sidebar-header">
+                <div class="sidebar-top-section">
+                    <div class="header-eixa">
+                        <img src="./assets/img/eixa.svg" alt="EIXA Logo" />
+                        <span class="logo-text">EIXA</span>
+                    </div>
+                    <button id="sidebarToggleBtn" class="icon-button sidebar-toggle-btn" aria-label="Recolher ou Expandir Menu de Navegação">
+                        <i class="material-icons">menu_open</i>
+                    </button>
+                </div>
+                <div id="currentDateTimeDisplay" class="current-datetime-display"></div>
+            </div>
+            
+            <nav class="tabs-container" role="tablist">
+                <button class="tab-button active" data-target-view="chat" role="tab" aria-selected="true" aria-controls="chatViewContent" tabindex="0">
+                    <i class="material-icons">chat_bubble</i><span class="tab-text">Chat</span>
+                </button>
+                <button class="tab-button" data-target-view="agenda" role="tab" aria-selected="false" aria-controls="agendaViewContent" tabindex="-1"> 
+                    <i class="material-icons">calendar_month</i><span class="tab-text">Agenda</span>
+                </button>
+                <button class="tab-button" data-target-view="projetos" role="tab" aria-selected="false" aria-controls="projetosViewContent" tabindex="-1">
+                    <i class="material-icons">folder_open</i><span class="tab-text">Projetos</span>
+                </button>
+                <button class="tab-button" data-target-view="emotionalMemories" role="tab" aria-selected="false" aria-controls="emotionalMemoriesViewContent" tabindex="-1">
+                    <i class="material-icons">psychology_alt</i><span class="tab-text">Memórias</span>
+                </button>
+                <button class="tab-button" data-target-view="longTermMemory" role="tab" aria-selected="false" aria-controls="longTermMemoryViewContent" tabindex="-1">
+                    <i class="material-icons">self_improvement</i><span class="tab-text">Perfil</span>
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div id="userDisplayArea" class="user-info-bar" style="display: none;">
+                    <span id="welcomeMessage" class="sr-only"></span>
+                    <strong id="userName"></strong>
+                    <button id="signOutBtn" class="icon-button" aria-label="Sair da conta">
+                        <i class="material-icons">logout</i>
+                    </button>
+                </div>
+                <div class="app-settings-buttons">
+                    <button id="themeToggleBtn" class="icon-button" aria-label="Alternar Tema Escuro/Claro">
+                        <i class="material-icons">dark_mode</i>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <main id="mainContentArea" class="main-content-area" role="main" style="display: none;"></main>
+
+        <section id="authSection" class="auth-section" aria-modal="true" role="dialog" aria-label="Autenticação de Usuário">
+            <div class="auth-card">
+                <div class="auth-header">
+                    <div class="header-eixa">
+                        <img src="./assets/img/eixa.svg" alt="EIXA Logo" />
+                        <span>EIXA</span>
+                    </div>
+                    <h1 class="auth-card-title">Acesse sua central de inteligência</h1>
+                    <p class="auth-card-subtitle">e comece a organizar seu fluxo mental.</p>
+                </div>
+                
+                <div id="manualAuthContainer">
+                    <div class="input-group">
+                        <input type="email" id="emailInput" placeholder="Seu email" required autocomplete="email">
+                    </div>
+                    <div class="input-group">
+                        <input type="password" id="passwordInput" placeholder="Sua senha" required minlength="6" autocomplete="current-password">
+                    </div>
+                    <div id="authErrorMessage" class="error-message" role="alert" aria-live="assertive" style="display:none;"></div>
+                    <div class="auth-buttons-group">
+                        <button id="emailLoginBtn" class="button-primary auth-button">Entrar com Email e Senha</button>
+                        <button id="emailSignupBtn" class="button-secondary auth-button">Cadastrar com Email e Senha</button>
+                        <div class="divider">OU</div>
+                        <button id="googleLoginBtn" class="auth-button google-button">
+                            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Ícone do Google" class="google-icon">
+                            Entrar com Google
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+    </div> 
+    <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+    <div id="editProjectModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="editProjectModalTitle" tabindex="-1"></div>
+    <div id="addTaskModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="addTaskModalTitle" tabindex="-1"></div>
+    <div id="editRoutineModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="editRoutineModalTitle" tabindex="-1"></div>
+    <div id="confirmationModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="confirmationModalTitle" tabindex="-1"></div>
+    
+    <template id="views-template">
+        <div id="chatViewContent" class="view-content" role="tabpanel" aria-labelledby="chat-tab">
+            <div id="chatDisplay" class="chat-display" role="log">
+                <div class="message ai-message">
+                    <div class="ai-avatar"><img src="./assets/img/eixa.svg" alt="EIXA IA" /></div>
+                    <div class="message-content">Olá! Eu sou a EIXA. Como posso te ajudar a organizar suas ideias e projetos hoje?</div>
+                    <button class="icon-button copy-button" aria-label="Copiar mensagem">
+                        <i class="material-icons">content_copy</i>
+                    </button>
+                </div>
+            </div>
+            <div class="chat-input-area">
+                <div id="loadingIndicator" class="loading-indicator" style="display: none;">
+                    <img src="./assets/img/eixa.svg" alt="EIXA pensando" style="width: 24px; height: 24px; animation: fillPulse 2.5s ease-in-out infinite;" />
+                    <span class="sr-only" id="chatAiThinkingSrOnly"></span>
+                    <span id="chatAiThinkingVisible"></span>
+                </div>
+                <div id="suggestedTasksContainer" class="suggested-sections" style="display: none;">
+                    <h3><i class="material-icons">checklist</i> <span id="suggestedTasksTitleSpan" class="section-title-text"></span></h3>
+                    <ul id="suggestedTasksList"></ul>
+                </div>
+                <div id="suggestedProjectsContainer" class="suggested-sections" style="display: none;">
+                    <h3><i class="material-icons">create_new_folder</i> <span id="suggestedProjectsTitleSpan" class="section-title-text"></span></h3>
+                    <div id="suggestedProjectsCards" class="cards-grid"></div>
+                </div>
+
+                <div id="confirmationArea" class="confirmation-message" style="display: none;">
+                    <p id="confirmationText"></p>
+                    <div class="confirmation-actions">
+                        <button id="confirmYesBtnChat" class="confirm-yes">Sim</button>
+                        <button id="confirmNoBtnChat" class="confirm-no">Não</button>
+                    </div>
+                </div>
+
+                <div id="inputWrapper" class="input-wrapper">
+                    <button id="fileUploadBtn" class="icon-button file-upload-button" aria-label="Anexar Arquivo">
+                        <i class="material-icons">attach_file</i>
+                    </button>
+                    <div class="attachment-info" style="display: none;">
+                        <span class="file-name-display" aria-live="polite"></span>
+                        <button class="icon-button attachment-clear-icon" aria-label="Remover arquivo anexado">
+                            <i class="material-icons">close</i>
+                        </button>
+                    </div>
+                    <input type="file" id="fileInput" class="hidden-input" aria-label="Selecione um arquivo para upload">
+                    <textarea id="messageInput" placeholder="Converse com a EIXA..." rows="1" aria-label="Caixa de texto para digitar mensagem"
+                                 autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="text" name="messageInput"></textarea>
+                    <button id="sendMessageBtn" class="icon-button send-message-button" aria-label="Enviar Mensagem">
+                        <i class="material-icons">send</i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div id="agendaViewContent" class="view-content" role="tabpanel" aria-labelledby="agenda-tab"> 
+            <header class="view-header">
+                <h2 class="view-content-title">Minha Agenda</h2> 
+                <button id="openAddTaskModalBtn" class="add-action-button" aria-label="Adicionar Nova Tarefa" title="Adicionar Nova Tarefa">
+                    <i class="material-icons">add</i>
+                </button>
+                <button id="openAddRoutineModalBtn" class="add-action-button" aria-label="Criar Nova Rotina" title="Criar Nova Rotina">
+                    <i class="material-icons">add_alarm</i> 
+                </button>
+                <button id="syncGoogleCalendarBtnAgenda" class="add-action-button" aria-label="Sincronizar Google Calendar" title="Sincronizar Google Calendar">
+                    <i class="material-icons">sync</i>
+                </button>
+            </header>
+            <div id="agendaDisplay" class="content-display-area"> 
+            </div>
+        </div>
+        <div id="projetosViewContent" class="view-content" role="tabpanel" aria-labelledby="projetos-tab">
+            <header class="view-header">
+                <h2 class="view-content-title">Projetos</h2>
+                <button id="openAddProjectModalBtn" class="add-action-button" aria-label="Adicionar Novo Projeto" title="Adicionar Novo Projeto">
+                    <i class="material-icons">add</i>
+                </button>
+            </header>
+            <div id="projetosDisplay" class="content-display-area"></div>
+        </div>
+        <div id="emotionalMemoriesViewContent" class="view-content" role="tabpanel" aria-labelledby="emotional-memories-tab">
+            <header class="view-header">
+                <h2 class="view-content-title">Memórias Emocionais</h2>
+            </header>
+            <p class="view-intro">Registros de momentos e emoções para sua reflexão.</p>
+            <div id="emotionalMemoriesDisplay" class="content-display-area cards-grid"></div>
+        </div>
+        <div id="longTermMemoryViewContent" class="view-content" role="tabpanel" aria-labelledby="long-term-memory-tab">
+            <header class="view-header">
+                <h2 class="view-content-title">Memória de Longo Prazo (Perfil)</h2>
+            </header>
+            <p class="view-intro">O que a EIXA aprendeu sobre você para personalização profunda.</p>
+            <div id="longTermMemoryDisplay" class="content-display-area"></div>
+        </div>
+        <!-- NOVO: DIV PARA TEMPLATES DE ROTINA. NÃO É UMA ABA, MAS UMA VIEW SECUNDÁRIA -->
+        <div id="rotinasTemplatesViewContent" class="view-content" role="tabpanel" aria-labelledby="rotinas-templates-tab" style="display: none;">
+            <header class="view-header">
+                <h2 class="view-content-title">Templates de Rotina</h2>
+                <button id="openAddRoutineModalBtnSecondary" class="add-action-button" aria-label="Criar Novo Template de Rotina" title="Criar Novo Template de Rotina">
+                    <i class="material-icons">add_alarm</i> 
+                </button>
+            </header>
+            <div id="rotinasDisplay" class="content-display-area cards-grid"></div>
+        </div>
+    </template>
+    
+    <!-- NOVO TEMPLATE PARA TAREFAS/EVENTOS NA LINHA DO TEMPO DA AGENDA -->
+    <template id="agenda-event-block-template">
+        <div class="agenda-event-block" tabindex="0">
+            <span class="event-time"></span>
+            <span class="event-description"></span>
+            <div class="event-icons">
+                <!-- Ícones para origem e tipo (GC, Rotina, Tarefa Concluída) -->
+            </div>
+        </div>
+    </template>
+
+    <template id="project-card-template">
+        <div class="project-card" tabindex="0">
+            <h4></h4>
+            <p class="project-description"></p>
+            <div class="project-details">
+                <strong>Status:</strong> <span class="project-status-display"></span>
+                <div class="project-deadline-container"><strong>Prazo:</strong> <span class="project-deadline"></span></div>
+            </div>
+            <strong>Microtarefas:</strong>
+            <ul class="project-microtasks-list"></ul>
+            <div class="card-actions">
+                <button class="icon-button edit-button" title="Editar Projeto" aria-label="Editar Projeto">
+                    <i class="material-icons">edit</i>
+                </button>
+                <button class="icon-button delete-button" title="Excluir Projeto" aria-label="Excluir Projeto">
+                    <i class="material-icons">delete_forever</i>
+                </button>
+            </div>
+        </div>
+    </template>
+    <template id="routine-card-template"> 
+        <div class="routine-card" tabindex="0">
+            <h4><i class="material-icons">repeat</i> <span class="routine-name-display"></span></h4>
+            <p class="routine-description"></p>
+            <p class="routine-days"><strong>Aplica-se a:</strong> <span class="routine-days-display"></span></p>
+            <strong>Itens da Rotina:</strong>
+            <ul class="routine-schedule-list"></ul>
+            <div class="card-actions">
+                <button class="icon-button edit-button" title="Editar Rotina" aria-label="Editar Rotina">
+                    <i class="material-icons">edit</i>
+                </button>
+                <button class="icon-button apply-button" title="Aplicar Rotina ao Dia" aria-label="Aplicar Rotina ao Dia">
+                    <i class="material-icons">calendar_today</i>
+                </button>
+                <button class="icon-button delete-button" title="Excluir Rotina" aria-label="Excluir Rotina">
+                    <i class="material-icons">delete_forever</i>
+                </button>
+            </div>
+        </div>
+    </template>
+    <template id="microtask-edit-template">
+        <div class="modal-microtask-item">
+            <input type="checkbox" class="edit-microtask-completed" aria-label="Marcar microtarefa como concluída">
+            <input type="text" class="edit-microtask-description" placeholder="Descreva a microtarefa..." aria-label="Descrição da microtarefa">
+            <button class="icon-button remove-microtask-button" title="Remover" aria-label="Remover microtarefa">
+                <i class="material-icons">delete</i>
+            </button>
+        </div>
+    </template>
+    <template id="routine-item-edit-template">
+        <div class="modal-routine-item">
+            <input type="time" class="edit-routine-item-time" required aria-label="Hora da atividade">
+            <input type="number" class="edit-routine-item-duration" min="0" placeholder="Minutos" aria-label="Duração em minutos">
+            <input type="text" class="edit-routine-item-description" placeholder="Descreva a atividade..." required aria-label="Descrição da atividade">
+            <button class="icon-button remove-routine-item-button" title="Remover" aria-label="Remover item da rotina">
+                <i class="material-icons">delete</i>
+            </button>
+        </div>
+    </template>
+    <template id="diagnostic-card-template">
+        <div class="diagnostic-card" tabindex="0">
+            <p class="diagnostic-timestamp"><strong>Checkpoint de:</strong> <span></span></p>
+            <div class="diagnostic-category"><h4><i class="material-icons">checklist</i> Conquistas</h4><ul class="diagnostic-conquistas-list"></ul></div>
+            <div class="diagnostic-category"><h4><i class="material-icons">psychology_alt</i> Padrões Negativos</h4><ul class="diagnostic-padroes-negativos-list"></ul></div>
+            <div class="diagnostic-category"><h4><i class="material-icons">folder_open</i> Alertas</h4><ul class="diagnostic-alertas-list"></ul></div>
+            <p class="diagnostic-summary-label"><strong>Resumo da IA:</strong></p><p class="diagnostic-summary"></p>
+        </div>
+    </template>
+    <template id="emotional-memory-card-template">
+        <div class="emotional-memory-card" tabindex="0">
+            <p class="memory-timestamp"><span></span></p>
+            <p class="memory-content"></p>
+            <div class="memory-tags-list"></div>
+        </div>
+    </template>
+    <template id="long-term-profile-template">
+        <div class="long-term-profile-display content-display-area">
+            <h3>Informações Essenciais</h3>
+            <p><strong>Nome:</strong> <span data-field="name"></span></p>
+            <p><strong>Localidade:</strong> <span data-field="locale"></span></p>
+            <p><strong>Fuso Horário:</strong> <span data-field="timezone"></span></p>
+            
+            <h3>Aspectos Psicológicos e Comportamentais</h3>
+            <div class="profile-section">
+                <h4>Traços de Personalidade</h4><ul data-field="personality_traits"></ul>
+            </div>
+            <div class="profile-section">
+                <h4>Condições e Diagnósticos</h4><ul data-field="diagnoses_and_conditions"></ul>
+            </div>
+            <div class="profile-section">
+                <h4>Padrões Comportamentais Históricos</h4><ul data-field="historical_behavioral_patterns"></ul>
+            </div>
+            <div class="profile-section">
+                <h4>Mecanismos de Coping</h4><ul data-field="coping_mechanisms"></ul>
+            </div>
+            
+            <h3>Estilo Cognitivo</h3>
+            <ul data-field="cognitive_style"></ul>
+            
+            <h3>Preferências de Comunicação com a EIXA</h3>
+            <p><strong>Tom Preferencial:</strong> <span data-field="tone_preference"></span></p>
+            <p><strong>Estilo de Intervenção:</strong> <span data-field="intervention_style"></span></p>
+            <div class="profile-section">
+                <h4>Ações Esperadas da EIXA</h4><ul data-field="expected_eixa_actions"></ul>
+            </div>
+            <div class="profile-section">
+                <h4>Regras Específicas (Não Fazer)</h4><ul data-field="specific_no_gos"></ul>
+            </div>
+            
+            <h3>Contexto de Vida</h3>
+            <p><strong>Profissional:</strong> <span data-field="professional"></span></p>
+            <p><strong>Relacionamentos:</strong> <span data-field="personal_relationships"></span></p>
+            <p><strong>Saúde e Bem-Estar:</strong> <span data-field="health_and-wellness"></span></p>
+
+            <!-- NOVO: Seção de Integrações com Google Calendar - NO PERFIL -->
+            <h3>Integrações</h3>
+            <div class="profile-section">
+                <h4>Google Calendar</h4>
+                <p class="google-calendar-status-text" id="googleCalendarStatus">Status: Verificando...</p>
+                <button id="connectGoogleCalendarBtn" class="connect-google-button" style="display: none;">
+                    <i class="material-icons">calendar_today</i> Conectar Google Calendar
+                </button>
+                <button id="syncGoogleCalendarBtn" class="connect-google-button" style="display: none;">
+                    <i class="material-icons">sync</i> Sincronizar Google Calendar
+                </button>
+                <button id="disconnectGoogleCalendarBtn" class="button-secondary" style="display: none;">
+                    <i class="material-icons">link_off</i> Desconectar Google Calendar
+                </button>
+                <!-- Botão para ver templates de rotina, se for manter a visualização dos TEMPLATES de rotina (e não a agenda) -->
+                <button id="viewRoutineTemplatesBtn" class="button-secondary" style="margin-top: var(--spacing-md);">
+                    <i class="material-icons">repeat</i> Ver Meus Templates de Rotina
+                </button>
+            </div>
+
+            <!-- Adição: Botões de Tema e Logout para Mobile -->
+            <div class="mobile-settings-actions">
+                <button id="mobileThemeToggleBtn" class="button-secondary" aria-label="Alternar Tema Escuro/Claro">
+                    <i class="material-icons">dark_mode</i> <span>Alterar Tema</span>
+                </button>
+                <button id="mobileSignOutBtn" class="button-secondary" aria-label="Sair da conta">
+                    <i class="material-icons">logout</i> <span>Sair</span>
+                </button>
+            </div>
+        </div>
+    </template>
+    
+    <template id="editProjectModalTemplate">
+        <div class="modal-content">
+            <h3 id="editProjectModalTitle">Editar Projeto</h3>
+            <button class="icon-button close-button" title="Fechar" aria-label="Fechar Modal">×</button>
+            <label for="editProjectName">Nome do Projeto</label>
+            <input type="text" id="editProjectName" required aria-label="Nome do Projeto">
+            <label for="editProjectDescription">Descrição</label>
+            <textarea id="editProjectDescription" rows="3" aria-label="Descrição do Projeto"></textarea>
+            <div class="modal-row">
+                <div class="modal-field">
+                    <label for="editProjectStatus">Status</label>
+                    <select id="editProjectStatus" aria-label="Status do Projeto">
+                        <option value="open">Aberto</option>
+                        <option value="in_progress">Em Progresso</option>
+                        <option value="on_hold">Pausado</option>
+                        <option value="completed">Concluído</option>
+                        <option value="cancelled">Cancelado</option>
+                        <option value="archived">Arquivado</option>
+                    </select>
+                </div>
+                <div class="modal-field">
+                    <label for="editProjectDeadline">Prazo Final</label>
+                    <input type="date" id="editProjectDeadline" aria-label="Prazo Final do Projeto">
+                </div>
+            </div>
+            <label>Microtarefas</label>
+            <div id="editProjectMicrotasks"></div>
+            <button id="addMicrotaskModalBtn" class="button-secondary" aria-label="Adicionar Microtarefa">
+                <i class="material-icons">add</i> <span id="addMicrotaskButtonLabelSpan"></span>
+            </button>
+            <div class="button-group">
+                <button id="editProjectCancelBtn" class="cancel-button" aria-label="Cancelar"></button>
+                <button id="saveProjectChangesBtn" class="save-button" aria-label="Salvar Alterações"></button>
+            </div>
+        </div>
+    </template>
+    <template id="addTaskModalTemplate">
+        <div class="modal-content">
+            <h3 id="addTaskModalTitle">Adicionar Nova Tarefa</h3>
+            <button class="icon-button close-button" title="Fechar" aria-label="Fechar Modal">×</button>
+            <label for="newTaskDescription">Descrição</label>
+            <input type="text" id="newTaskDescription" placeholder="Ex: Preparar relatório semanal" required aria-label="Descrição da Nova Tarefa">
+            <div class="modal-row">
+                <div class="modal-field">
+                    <label for="newTaskDate">Data</label>
+                    <input type="date" id="newTaskDate" required aria-label="Data da Nova Tarefa">
+                </div>
+                <div class="modal-field">
+                    <label for="newTaskTime">Hora</label>
+                    <input type="time" id="newTaskTime" value="09:00" required aria-label="Hora da Nova Tarefa">
+                </div>
+            </div>
+            <label for="newTaskDuration">Duração (minutos)</label>
+            <input type="number" id="newTaskDuration" min="0" value="60" aria-label="Duração da Nova Tarefa em minutos">
+            <div class="button-group">
+                <button id="addTaskCancelBtn" class="cancel-button" aria-label="Cancelar"></button>
+                <button id="saveNewTaskBtn" class="save-button" aria-label="Salvar Nova Tarefa"></button>
+            </div>
+        </div>
+    </template>
+    <template id="editRoutineModalTemplate">
+        <div class="modal-content">
+            <h3 id="editRoutineModalTitle">Criar/Editar Rotina</h3>
+            <button class="icon-button close-button" title="Fechar" aria-label="Fechar Modal">×</button>
+            <label for="routineName">Nome da Rotina</label>
+            <input type="text" id="routineName" required placeholder="Ex: Rotina Matinal" aria-label="Nome da Rotina">
+            <label for="routineDescription">Descrição</label>
+            <textarea id="routineDescription" rows="2" placeholder="Ex: Preparação para o dia de trabalho" aria-label="Descrição da Rotina"></textarea>
+            <label>Aplica-se aos Dias da Semana</label>
+            <div id="routineDaysOfWeek" class="modal-row" style="flex-wrap: wrap;">
+                <input type="checkbox" id="routineMon" data-day="MONDAY"><label for="routineMon">Seg</label>
+                <input type="checkbox" id="routineTue" data-day="TUESDAY"><label for="routineTue">Ter</label>
+                <input type="checkbox" id="routineWed" data-day="WEDNESDAY"><label for="routineWed">Qua</label>
+                <input type="checkbox" id="routineThu" data-day="THURSDAY"><label for="routineThu">Qui</label>
+                <input type="checkbox" id="routineFri" data-day="FRIDAY"><label for="routineFri">Sex</label>
+                <input type="checkbox" id="routineSat" data-day="SATURDAY"><label for="routineSat">Sáb</label>
+                <input type="checkbox" id="routineSun" data-day="SUNDAY"><label for="routineSun">Dom</label>
+            </div>
+            <label for="routineRecurrenceRule">Regra de Recorrência (ex: Diário, Semanal, Mensal)</label>
+            <input type="text" id="routineRecurrenceRule" placeholder="Ex: Semanalmente, Toda terça-feira" aria-label="Regra de Recorrência">
+            <label>Itens da Rotina</label>
+            <div id="routineItemsContainer"></div>
+            <button id="addRoutineItemModalBtn" class="button-secondary" aria-label="Adicionar Item à Rotina">
+                <i class="material-icons">add</i> Adicionar Item
+            </button>
+            <div class="button-group">
+                <button id="routineCancelBtn" class="cancel-button" aria-label="Cancelar"></button>
+                <button id="saveRoutineBtn" class="save-button" aria-label="Salvar Rotina"></button>
+            </div>
+        </div>
+    </template>
+    <template id="confirmationModalTemplate">
+        <div class="modal-content">
+            <h3 id="confirmationModalTitle">Confirmação</h3>
+            <button class="icon-button close-button" title="Fechar" aria-label="Fechar Modal">×</button>
+            <p id="confirmationMessage"></p>
+            <div class="button-group">
+                <button id="confirmNoBtn" class="cancel-button" aria-label="Não Confirmar"></button>
+                <button id="confirmYesBtn" class="save-button" aria-label="Confirmar"></button>
+            </div>
+        </div>
+    </template>
+
+    <a id="eixaIconFab" href="#chat" class="eixa-icon-fab" style="display: none;">
+      <img src="./assets/img/eixa.svg" alt="EIXA Icon" />
+    </a>
+
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-functions.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
-
     <script>
         'use strict';
+
+        // --- GLOBAL UTILS (Moved outside DOMContentLoaded to prevent ReferenceReferences) ---
+        let elements = {}; 
+        let globalLoaderTimeout;
+        function showGlobalLoader() { 
+            console.log("DEBUG: showGlobalLoader called.");
+            if (elements.globalLoader) {
+                elements.globalLoader.style.display = 'flex';
+                clearTimeout(globalLoaderTimeout);
+                globalLoaderTimeout = setTimeout(() => {
+                    elements.globalLoader.classList.add('active'); 
+                    elements.globalLoader.setAttribute('aria-busy', 'true');
+                }, 50);
+            }
+        }
+        function hideGlobalLoader() { 
+            console.log("DEBUG: hideGlobalLoader called.");
+            clearTimeout(globalLoaderTimeout);
+            if (elements.globalLoader) {
+                elements.globalLoader.classList.remove('active'); 
+                elements.globalLoader.style.display = 'none';
+                elements.globalLoader.setAttribute('aria-busy', 'false');
+            }
+        }
+
+        // Toasts (Floating Notifications)
+        function showToast(message, type = 'info', duration = 3500) {
+            if (!elements.toastContainer) { console.warn("DEBUG: Toast container not found."); return; }
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
+            elements.toastContainer.appendChild(toast);
+            requestAnimationFrame(() => toast.classList.add('show'));
+            setTimeout(() => {
+                toast.classList.remove('show');
+                toast.addEventListener('transitionend', () => toast.remove());
+            }, duration);
+        }
+
+        // Display Authentication Errors
+        function displayAuthError(message) {
+            if (!message || message.trim() === '') {
+                message = '';
+            }
+            if (elements.authErrorMessage) {
+                elements.authErrorMessage.textContent = message;
+                elements.authErrorMessage.style.display = message ? 'block' : 'none'; 
+            }
+            if (message) {
+                console.error("DEBUG: Auth Error:", message);
+            }
+        }
+
+        // HTML Sanitization to prevent XSS and Markdown parsing to HTML
+        function escapeHTML(str) {
+            const div = document.createElement("div");
+            div.appendChild(document.createTextNode(str));
+            return div.innerHTML;
+        }
+
+        function parseMarkdownToHtml(text) {
+            if (!text) return '';
+            let html = escapeHTML(text); 
+            html = html
+                .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+                .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') 
+                .replace(/\*(.*?)\*/g, '<em>$1</em>') 
+                .replace(/^- (.*$)/gim, '<ul><li>$1</li></ul>')   
+                .replace(/<\/ul>\s*<ul>/g, '')  
+                .replace(/\n(?=<h[1-6]|<ul|<ol>)/g, '')   
+                .replace(/\n/g, '<br>');   
+            return html;
+        }
+
+        // Date Formatting
+        function formatDate(isoDateString) {
+            if (!isoDateString) return 'N/A';
+            try {
+                const dateObj = new Date(isoDateString + 'T00:00:00'); 
+                if (isNaN(dateObj.getTime())) { console.error("DEBUG: Invalid date object created from:", isoDateString); return 'Data Inválida'; }
+                return dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            } catch (e) {
+                console.error("DEBUG: Error formatting date:", isoDateString, e);
+                return 'Formato Inválido';
+            }
+        }
         
-        // --- FUNÇÕES UTILITÁRIAS GLOBAIS (Permanecem as mesmas) ---
-        let elements = {};
-        function showGlobalLoader() { /* ... */ }
-        function hideGlobalLoader() { /* ... */ }
-        function showToast(message, type = 'info', duration = 3500) { /* ... */ }
-        function displayAuthError(message) { /* ... */ }
-        function escapeHTML(str) { /* ... */ }
-        function parseMarkdownToHtml(text) { /* ... */ }
-        function formatDate(isoDateString) { /* ... */ }
-        function formatDateTime(timestamp) { /* ... */ }
-        function getPersonalizedGreeting() { /* ... */ }
-        function openModal(modalId) { /* ... */ }
-        function closeModal(modalId) { /* ... */ }
+        function formatDateTime(timestamp) {
+            if (!timestamp) return 'N/A';
+            try {
+                let dateObj;
+                if (typeof timestamp === 'object' && timestamp._seconds !== undefined) { 
+                    dateObj = new Date(timestamp._seconds * 1000);
+                } else if (typeof timestamp === 'string') { 
+                    dateObj = new Date(timestamp);
+                } else {
+                    console.warn("DEBUG: Unknown timestamp format:", typeof timestamp, timestamp);
+                    return 'N/A';
+                }
+                
+                if (isNaN(dateObj.getTime())) { console.error("DEBUG: Invalid date object from timestamp:", timestamp); return 'Data Inválida'; }
+                return dateObj.toLocaleString('pt-BR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+            } catch (e) {
+                console.error("DEBUG: Error formatting datetime:", timestamp, e);
+                return 'Formato Inválido';
+            }
+        }
+
+
+        // Generate Personalized Greeting
+        function getPersonalizedGreeting() {
+            const hour = new Date().getHours();
+            if (hour < 12) return "Bom dia,";
+            if (hour < 18) return "Boa tarde,";
+            return "Boa noite,";
+        }
+
+        // Functions for Modals (global to be called directly from HTML)
+        let activeModalElement = null;  
+        function openModal(modalId) {  
+            console.log("DEBUG: openModal called for:", modalId);
+            const modal = elements[modalId];
+            if (modal) {
+                setTimeout(() => {
+                    modal.classList.add('active');
+                    modal.focus();  
+                    activeModalElement = modal; 
+
+                    const modalContent = modal.querySelector('.modal-content');
+                    if (modalContent) {
+                        const existingHandler = modal.dataset.overlayClickHandler;
+                        if (!existingHandler) {
+                            const handler = function(e) {
+                                if (e.target === modal) {   
+                                    closeModal(modalId);
+                                    modal.removeEventListener('click', handler);    
+                                    delete modal.dataset.overlayClickHandler;
+                                }
+                            };
+                            modal.addEventListener('click', handler);
+                            modal.dataset.overlayClickHandler = 'true'; 
+                        }
+
+                        const existingStopPropHandler = modalContent.dataset.stopPropHandler;
+                        if (!existingStopPropHandler) {
+                            const stopProp = function(e) { e.stopPropagation(); };
+                            modalContent.addEventListener('click', stopProp);
+                            modalContent.dataset.stopPropHandler = 'true'; 
+                        }
+                    }
+                }, 0);  
+            } else {
+                console.error("DEBUG: Modal element not found:", modalId);
+            }
+        }
+        function closeModal(modalId) { 
+            console.log("DEBUG: closeModal called for:", modalId);
+            const modal = elements[modalId];
+            if (modal) {
+                modal.classList.remove('active');
+                activeModalElement = null;  
+            } else {
+                console.warn("DEBUG: Attempted to close non-existent modal:", modalId);
+            }
+        }
 
         document.addEventListener('DOMContentLoaded', () => {
-            console.log("DEBUG: DOMContentLoaded. Iniciando EIXA com Firebase SDK.");
+            console.log("DEBUG: DOMContentLoaded fired. Starting application initialization.");
 
-            // --- CONFIGURAÇÃO E ESTADO GLOBAL ---
-            const firebaseConfig = {
-                apiKey: "AIzaSyAKEdwGJFjAXyY3vQUMm0sCIvdSfs-WInw",
-                authDomain: "arquitetodadivulgacao.firebaseapp.com",
-                projectId: "arquitetodadivulgacao",
-                storageBucket: "arquitetodadivulgacao.firebaseapp.com",
-                messagingSenderId: "760851989407",
-                appId: "1:760851989407:web:485fc9e2d0328b479473aa"
-            };
-
-            // Configuração da API do Backend no Cloud Run
+            // --- CONFIGURATION AND GLOBAL STATE ---
             const config = {
-                CLOUD_FUNCTION_URL: 'https://eixa-api-760851989407.us-east1.run.app/interact',
-                firebaseConfig: firebaseConfig
+                CLOUD_FUNCTION_URL: "https://eixa-760851989407.us-east1.run.app/interact",
+                CLOUD_FUNCTION_AUTH_URL: "https://eixa-760851989407.us-east1.run.app/auth/google",
+                CLOUD_FUNCTION_OAUTH_CALLBACK_URL: "https://eixa-760851989407.us-east1.run.app/oauth2callback",
+                firebaseConfig: {
+                    apiKey: "AIzaSyAKEdwGJFjAXyY3vQUMm0sCIvdSfs-WInw",
+                    authDomain: "arquitetodadivulgacao.firebaseapp.com",
+                    projectId: "arquitetodadivulgacao",
+                    storageBucket: "arquitetodadivulgacao.firebasestorage.app",
+                    messagingSenderId: "760851989407",
+                    appId: "1:760851989407:web:485fc9e2d0328b479473aa"
+                },
+                MAX_FILE_SIZE: 10 * 1024 * 1024,
+                FRONTEND_URL: "https://eixa.web.app" 
             };
 
-            const i18nStrings = { /* ... (strings do original) ... */ };
+            // Centralization of strings for easy maintenance and internationalization (i18n)
+            const i18nStrings = {
+                loginError: 'Erro de login:',
+                signupError: 'Erro de cadastro:',
+                googleLoginError: 'Erro de login com Google:',
+                authMissingFields: 'Por favor, insira e-mail e senha.',
+                fileTooLarge: 'Arquivo muito grande (máx 10MB).',
+                unauthenticated: 'Usuário não autenticado.',
+                apiError: 'Falha na comunicação:',
+                confirmTaskDelete: 'Tem certeza que deseja excluir a tarefa',
+                confirmProjectDelete: 'Tem certeza que deseja excluir o projeto',
+                confirmRoutineDelete: 'Tem certeza que deseja excluir a rotina',
+                taskDescriptionAndDateRequired: 'Descrição, data e hora são obrigatórias.',
+                routineNameRequired: 'O nome da rotina é obrigatório.',
+                routineItemDescriptionTimeRequired: 'Todos os itens da rotina devem ter descrição, hora e duração.',
+                taskAddSuccess: 'Tarefa adicionada com sucesso!',
+                routineAddSuccess: 'Rotina salva com sucesso!',
+                routineApplySuccess: 'Rotina aplicada com sucesso!',
+                taskCreateError: 'Erro ao criar tarefa.',
+                routineCreateError: 'Erro ao criar rotina.',
+                routineApplyError: 'Erro ao aplicar rotina.',
+                aiProcessing: 'EIXA está pensando...',
+                suggestedTasksTitle: 'Tarefas Sugeridas',
+                suggestedProjectsTitle: 'Projetos Sugeridos',
+                newTaskButtonLabel: 'Nova Tarefa',
+                newProjectButtonLabel: 'Novo Projeto',   
+                newRoutineButtonLabel: 'Nova Rotina',
+                forceCheckpointButtonLabel: 'Forçar Checkpoint',   
+                addMicrotaskButtonLabel: 'Adicionar',
+                addRoutineItemButtonLabel: 'Adicionar Item',
+                cancelButtonLabel: 'Cancelar',
+                saveChangesButtonLabel: 'Salvar Alterações',
+                saveTaskButtonLabel: 'Salvar Tarefa',
+                saveRoutineButtonLabel: 'Salvar Rotina',
+                yesButtonLabel: 'Sim',
+                noButtonLabel: 'Não',
+                noDataMessageAgenda: 'Nenhuma tarefa agendada. Que tal criar uma agora?', 
+                noDataMessageRoutines: 'Nenhuma rotina salva. Que tal criar uma nova?', 
+                noDataMessageProjects: 'Nenhum projeto encontrado. Converse com a EIXA para criar um!',
+                noDataMessageDiagnostic: 'Nenhum diagnóstico disponível. Interaja mais para gerar seu primeiro checkpoint.',   
+                defaultAiGreeting: 'Olá! Eu sou a EIXA. Como posso te ajudar a organizar suas ideias e projetos hoje?',
+                truncatedResponseWarning: '⚠️ A resposta pode estar incompleta, pois o modelo atingiu um limite.',
+                offlineMessage: 'Você está offline. Verifique sua conexão.',
+                onlineMessage: 'Conexão restabelecida.',
+                invalidDate: 'Data Inválida',
+                invalidDateFormat: 'Formato Inválido',
+                copySuccess: 'Copiado!',
+                copyError: 'Erro ao copiar.',
+                noDataMessageEmotionalMemories: 'Nenhuma memória emocional registrada ainda. Converse com a EIXA para que ela comece a registrar suas emoções!',
+                noDataMessageLongTermMemory: 'Perfil de longo prazo não disponível ou vazio. A EIXA precisa de mais interações para construir seu perfil.',
+                connectGoogleCalendarStatusChecking: 'Status: Verificando conexão...',
+                connectGoogleCalendarStatusConnected: 'Status: Conectado',
+                connectGoogleCalendarStatusNotConnected: 'Status: Não Conectado',
+                connectGoogleCalendarError: 'Erro ao conectar Google Calendar:',
+                disconnectGoogleCalendarConfirm: 'Tem certeza que deseja desconectar sua conta Google da EIXA?',
+                disconnectGoogleCalendarSuccess: 'Google Calendar desconectado.',
+                disconnectGoogleCalendarError: 'Erro ao desconectar Google Calendar.',
+                syncGoogleCalendarSuccess: 'Eventos do Google Calendar sincronizados!',
+                syncGoogleCalendarError: 'Erro ao sincronizar Google Calendar.',
+                confirmTaskMarkComplete: 'Marcar como CONCLUÍDA?',
+                confirmTaskMarkPending: 'Marcar como PENDENTE?',
+                confirmTaskDeleteInstance: 'Excluir APENAS esta tarefa?',
+                viewRoutineTemplate: 'Ver/Editar Template da Rotina',
+            };
 
             let currentUser = null; 
-            let currentFileUploadPath = null;
-            let isSendingMessage = false;
+            let currentFileUpload = null; 
+            let isSendingMessage = false; 
+            let currentEditProjectId = null; 
+            let currentEditRoutineId = null;
+            let debugMode = false; 
+            
+            let currentTheme = localStorage.getItem('theme') || 
+                               (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark-mode' : 'light-mode');
+            
+            let userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Sao_Paulo';
 
-             // --- INITIALIZATION AND ELEMENT BINDING ---
+            function updateClockDisplay() {
+                // Apenas acessa se o elemento existir, o que será garantido por initializeDynamicDOMElements se a UI for construída
+                if (elements.currentDateTimeDisplay) { 
+                    const now = new Date();
+                    const options = {
+                        year: 'numeric', month: '2-digit', day: '2-digit',
+                        hour: '2-digit', minute: '2-digit', second: '2-digit',
+                        hour12: false,
+                        timeZone: userTimezone 
+                    };
+                    const formattedDateTime = now.toLocaleString('pt-BR', options);
+                    elements.currentDateTimeDisplay.textContent = formattedDateTime;
+                }
+            }
+
+            // --- INITIALIZATION AND ELEMENT BINDING ---
 
             function initializeApp() {
                 console.log("DEBUG: initializeApp started.");
                 showGlobalLoader(); 
                 try {
-                    firebase.initializeApp(firebaseConfig); 
+                    firebase.initializeApp(config.firebaseConfig); 
                     console.log("DEBUG: Firebase App initialized successfully.");
                 } catch (e) {
                     console.error("DEBUG: FATAL: Firebase App initialization failed!", e);
@@ -1937,7 +2673,7 @@
                 if (elements.messageInput) {
                     elements.messageInput.addEventListener('keydown', (e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault(); 
+                            e.preventDefault();
                             handleSendMessage();
                         }
                     });
@@ -1945,8 +2681,47 @@
                 } else {
                     console.warn("DEBUG: messageInput not found to attach keydown listener.");
                 }
-
-                // Configura o relógio
+                
+                // Adicionar listener para fileInput
+                if (elements.fileInput) {
+                    elements.fileInput.addEventListener('change', (e) => {
+                        const file = e.target.files[0];
+                        if (!file) return;
+                        
+                        if (file.size > config.MAX_FILE_SIZE) {
+                            showToast(i18nStrings.fileTooLarge, 'error');
+                            elements.fileInput.value = '';
+                            return;
+                        }
+                        
+                        const reader = new FileReader();
+                        reader.onload = async (readerEvent) => {
+                            currentFileUpload = {
+                                filename: file.name,
+                                content_base64: readerEvent.target.result.split(',')[1],
+                                mimetype: file.type || 'application/octet-stream'
+                            };
+                            
+                            // Mostrar nome do arquivo na UI
+                            if (elements.fileNameDisplay) {
+                                elements.fileNameDisplay.textContent = file.name;
+                            }
+                            if (elements.attachmentInfoDiv) {
+                                elements.attachmentInfoDiv.style.display = 'flex';
+                            }
+                            if (elements.fileUploadBtn) {
+                                elements.fileUploadBtn.style.display = 'none';
+                            }
+                            console.log("DEBUG: File attached:", file.name, "Size:", file.size, "bytes");
+                        };
+                        reader.onerror = () => {
+                            showToast('Erro ao ler arquivo. Tente novamente.', 'error');
+                            elements.fileInput.value = '';
+                        };
+                        reader.readAsDataURL(file);
+                    });
+                    console.log("DEBUG: Change listener added to fileInput.");
+                }                // Configura o relógio
                 updateClockDisplay();
                 if (!window.clockInterval) {
                     window.clockInterval = setInterval(updateClockDisplay, 1000);
@@ -1999,7 +2774,12 @@
 
                 // Sidebar and global controls logic (elementos estáticos ou re-referenciados)
                 else if (target.closest('#sidebarToggleBtn')) elements.sidebarMenu.classList.toggle('collapsed');
-                else if (target.closest('.tab-button')) switchView(target.closest('.tab-button').dataset.targetView);
+                else if (target.closest('.tab-button')) {
+                    const viewName = target.closest('.tab-button').dataset.targetView;
+                    // Converte "agenda" para "agendaViewContent", "chat" para "chatViewContent", etc.
+                    const fullViewId = viewName === 'chat' ? 'chatViewContent' : viewName + 'ViewContent';
+                    switchView(fullViewId);
+                }
                 else if (target.closest('#signOutBtn')) firebase.auth().signOut();
                 else if (target.closest('#themeToggleBtn')) toggleTheme();
                 else if (target.closest('.modal .close-button')) closeModal(target.closest('.modal').id);
@@ -2219,7 +2999,7 @@
                 messageWrapper.className = `message ${isUser ? 'user-message' : 'ai-message'}`;
                 let contentHtml = '';
                 if (!isUser) {  
-                    contentHtml += `<div class="ai-avatar"><img src="https://storage.googleapis.com/eixa/eixa.svg" alt="EIXA IA" /></div>`;
+                    contentHtml += `<div class="ai-avatar"><img src="./assets/img/eixa.svg" alt="EIXA IA" /></div>`;
                 }
                 contentHtml += `<div class="message-content">${parseMarkdownToHtml(message)}</div>`;
                 if (!isUser) {
@@ -2522,28 +3302,33 @@
                 const iconsContainer = block.querySelector('.event-icons');
                 iconsContainer.innerHTML = ''; 
 
+                // Adicionar badge de origem
+                const badge = document.createElement('span');
+                badge.className = 'event-badge';
+                
                 if (task.origin === 'google_calendar') {
-                    const icon = document.createElement('i');
-                    icon.className = 'material-icons';
-                    icon.textContent = 'calendar_today';
-                    icon.title = 'Evento do Google Calendar';
-                    iconsContainer.appendChild(icon);
-                } else if (task.origin === 'routine') {
-                    const icon = document.createElement('i');
-                    icon.className = 'material-icons';
-                    icon.textContent = 'repeat';
-                    icon.title = 'Tarefa de Rotina';
-                    iconsContainer.appendChild(icon);
+                    badge.classList.add('badge-google');
+                    badge.innerHTML = '<i class="material-icons">event</i><span>Google</span>';
+                    badge.title = 'Evento do Google Calendar';
+                    iconsContainer.appendChild(badge);
+                } else if (task.origin === 'routine_applied') {
+                    badge.classList.add('badge-routine');
+                    badge.innerHTML = '<i class="material-icons">repeat</i><span>Rotina</span>';
+                    badge.title = 'Tarefa de Rotina';
+                    iconsContainer.appendChild(badge);
                 } else { // user_added
+                    badge.classList.add('badge-eixa');
+                    badge.innerHTML = '<i class="material-icons">person</i><span>Você</span>';
+                    badge.title = 'Tarefa Criada por Você';
+                    iconsContainer.appendChild(badge);
+                    
                     if (task.completed) {
-                        const icon = document.createElement('i');
-                        icon.className = 'material-icons';
-                        icon.textContent = 'check_circle';
-                        icon.title = 'Tarefa Concluída';
-                        iconsContainer.appendChild(icon);
+                        const checkIcon = document.createElement('i');
+                        checkIcon.className = 'material-icons completion-icon';
+                        checkIcon.textContent = 'check_circle';
+                        checkIcon.title = 'Tarefa Concluída';
+                        iconsContainer.appendChild(checkIcon);
                     }
-                    // Ações de editar/deletar não são mais ícones fixos no bloco para evitar clique acidental.
-                    // Serão gerenciadas pelo modal de confirmação/ação.
                 }
                 
                 return block;
