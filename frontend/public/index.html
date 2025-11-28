@@ -3054,4 +3054,1835 @@
                                 sendCrudRequest('task', 'update', taskId, { date: taskDate, completed: !taskCompleted, time: taskTime, duration_minutes: parseInt(taskDuration) });
                             }, 
                             () => { 
-                                showConfirmationMod
+                                showConfirmationModal(`Tem certeza que deseja EXCLUIR "${escapeHTML(taskDescription)}"?`, () => {
+                                    sendCrudRequest('task', 'delete', taskId, { date: taskDate });
+                                });
+                            },
+                            null, 
+                            false, 
+                            taskCompleted ? i18nStrings.confirmTaskMarkPending : i18nStrings.confirmTaskMarkComplete, 
+                            i18nStrings.confirmTaskDeleteInstance 
+                        );
+                    }
+                }
+                
+                // Project Actions logic
+                else if (target.closest('.project-card .edit-button')) {
+                    const projectId = target.closest('.project-card').dataset.id;
+                    console.log("DEBUG: Loading project for edit:", projectId);
+                    loadProjectForEdit(projectId);
+                }
+                else if (target.closest('.project-card .delete-button')) {
+                    const projectCard = target.closest('.project-card');
+                    const projectId = projectCard.dataset.id;
+                    const projectName = projectCard.querySelector('h4').textContent;
+                    console.log(`DEBUG: Requesting delete for project: ${projectId}, '${projectName}'`);
+                    showConfirmationModal(`${i18nStrings.confirmProjectDelete} "${escapeHTML(projectName)}"?`, () => {
+                        sendCrudRequest('project', 'delete', projectId);
+                    });
+                }
+                else if (target.closest('.project-microtasks-list li')) {
+                    const li = target.closest('.project-microtasks-list li');
+                    const projectCard = target.closest('.project-card');
+                    const projectId = projectCard.dataset.id;
+                    const microtaskIndex = Array.from(li.parentElement.children).indexOf(li);
+                    console.log(`DEBUG: Toggling microtask ${microtaskIndex} for project: ${projectId}`);
+                    handleToggleMicrotask(projectId, microtaskIndex);
+                }
+                else if (target.closest('.modal-microtask-item .remove-microtask-button')) {
+                    console.log("DEBUG: Removing microtask from modal.");
+                    target.closest('.modal-microtask-item').remove();
+                }
+                // Rotina Actions logic (botões nos cards de rotina no Perfil ou em uma view de templates)
+                else if (target.closest('.routine-card .edit-button')) {
+                    const routineId = target.closest('.routine-card').dataset.id;
+                    console.log("DEBUG: Loading routine for edit:", routineId);
+                    loadRoutineForEdit(routineId);
+                }
+                else if (target.closest('.routine-card .apply-button')) {
+                    const routineCard = target.closest('.routine-card');
+                    const routineId = routineCard.dataset.id;
+                    const routineName = routineCard.querySelector('.routine-name-display').textContent;
+                    console.log(`DEBUG: Requesting apply for routine: ${routineId}, '${routineName}'`);
+                    showConfirmationModal(`Aplicar a rotina "${escapeHTML(routineName)}" para qual data? (ex: "hoje", "amanhã", "2024-08-15")`, async (dateInput) => {
+                        const payload = {
+                            request_type: 'chat_and_view',
+                            message: `Aplique a rotina "${routineName}" (ID: ${routineId}) para ${dateInput}.`,
+                        };
+                        await handleSendMessage({ forcedMessage: payload.message });
+                        showToast(`Pedido para aplicar rotina "${routineName}" enviado.`, 'info');
+                    }, null, null, true); // O 'true' indica que queremos um input de texto na confirmação
+                }
+                else if (target.closest('.routine-card .delete-button')) {
+                    const routineCard = target.closest('.routine-card');
+                    const routineId = routineCard.dataset.id;
+                    const routineName = routineCard.querySelector('.routine-name-display').textContent;
+                    console.log(`DEBUG: Requesting delete for routine: ${routineId}, '${routineName}'`);
+                    showConfirmationModal(`${i18nStrings.confirmRoutineDelete} "${escapeHTML(routineName)}"?`, () => {
+                        sendCrudRequest('routine', 'delete', routineId);
+                    });
+                }
+                else if (target.closest('.modal-routine-item .remove-routine-item-button')) {
+                    console.log("DEBUG: Removing routine item from modal.");
+                    target.closest('.modal-routine-item').remove();
+                }
+            }
+
+            async function copyAiMessageContent(copyButton) {
+                const messageContentElement = copyButton.closest('.ai-message').querySelector('.message-content');
+                if (messageContentElement) {
+                    const textToCopy = messageContentElement.textContent || messageContentElement.innerText;
+                    try {
+                        const textarea = document.createElement('textarea');
+                        textarea.value = textToCopy;
+                        textarea.style.position = 'fixed';  
+                        textarea.style.opacity = '0';   
+                        document.body.appendChild(textarea);
+                        textarea.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(textarea);
+                        showToast(i18nStrings.copySuccess, 'success', 2000);
+                        console.log("DEBUG: Message copied to clipboard.");
+                    } catch (err) {
+                        console.error('DEBUG: Failed to copy text: ', err);
+                        showToast(i18nStrings.copyError, 'error', 2000);
+                    }
+                }
+            }
+
+            function handleGlobalInput(e) {
+                if (e.target.id === 'messageInput') {
+                    e.target.style.height = 'auto'; 
+                    e.target.style.height = e.target.scrollHeight + 'px';   
+                }
+                if (e.target.id === 'emailInput' || e.target.id === 'passwordInput') {
+                    displayAuthError('');
+                }
+            }
+
+            function handleGlobalChange(e) {
+                if (e.target.id === 'fileInput') {
+                    console.log("DEBUG: File input changed.");
+                    handleFileAttachment(e);
+                }
+            }
+
+            // --- View Rendering and Navigation Functions ---
+            function renderMessage(message, isUser) {
+                if (!elements.chatDisplay) { console.warn("DEBUG: chatDisplay element not found for rendering message."); return; }
+                const messageWrapper = document.createElement('div');
+                messageWrapper.className = `message ${isUser ? 'user-message' : 'ai-message'}`;
+                let contentHtml = '';
+                if (!isUser) {  
+                    contentHtml += `<div class="ai-avatar"><img src="./assets/img/eixa.svg" alt="EIXA IA" /></div>`;
+                }
+                contentHtml += `<div class="message-content">${parseMarkdownToHtml(message)}</div>`;
+                if (!isUser) {
+                    contentHtml += `<button class="icon-button copy-button" aria-label="Copiar mensagem">
+                        <i class="material-icons">content_copy</i>
+                    </button>`;
+                }
+
+                messageWrapper.innerHTML = contentHtml;
+                elements.chatDisplay.appendChild(messageWrapper);
+                elements.chatDisplay.scrollTop = elements.chatDisplay.scrollHeight;
+                console.log(`DEBUG: Message rendered - User: ${isUser}, Content: '${message.substring(0, 50)}...'`);
+            }
+
+            function updateSuggestedSections(tasks = [], projects = []) {
+                console.log("DEBUG: updateSuggestedSections called with tasks:", tasks.length, "projects:", projects.length);
+                // Verifica se os containers existem antes de tentar manipulá-los
+                if (!elements.suggestedTasksContainer || !elements.suggestedProjectsContainer) {
+                    console.warn("DEBUG: Suggested sections containers not found. Skipping update.");
+                    return;
+                }
+
+                // Verifica se as listas/cards existem dentro dos containers
+                if (!elements.suggestedTasksList || !elements.suggestedProjectsCards) {
+                    console.warn("DEBUG: Suggested tasks list or projects cards elements not found. Skipping update.");
+                    return;
+                }
+
+
+                if (tasks.length > 0) {
+                    elements.suggestedTasksList.innerHTML = tasks.map(t => `<li>${escapeHTML(t.description)}</li>`).join('');
+                    elements.suggestedTasksContainer.style.display = 'block';
+                    console.log("DEBUG: Displaying suggested tasks.");
+                } else {
+                    elements.suggestedTasksContainer.style.display = 'none';
+                }
+                if (projects.length > 0) {
+                    elements.suggestedProjectsCards.innerHTML = '';
+                    projects.forEach(p => {
+                        const renderedCard = renderProjectCard(p);
+                        if (renderedCard) { elements.suggestedProjectsCards.appendChild(renderedCard); }
+                    });
+                    elements.suggestedProjectsContainer.style.display = 'block';
+                    console.log("DEBUG: Displaying suggested projects.");
+                } else {
+                    elements.suggestedProjectsContainer.style.display = 'none';
+                }
+            }
+            
+            async function callBackendAPI(payload) {
+                console.log("DEBUG: callBackendAPI called with payload:", JSON.stringify(payload, null, 2));
+                if (!currentUser) { showToast(i18nStrings.unauthenticated, 'error'); console.warn("DEBUG: callBackendAPI aborted: User not authenticated."); return { status: 'error', response: i18nStrings.unauthenticated }; }
+
+                const isChatMessage = (payload.request_type === 'chat_and_view' && !payload.view_request && !payload.action); // Now check if action is null too
+                if (isChatMessage && isSendingMessage) {  
+                    console.warn("DEBUG: callBackendAPI aborted: Chat message already sending."); return { status: 'warning', response: 'Já enviando uma mensagem.' };  
+                }
+
+                if (isChatMessage) {
+                    showLoading();  
+                } else {
+                    showGlobalLoader();  
+                }
+
+                payload.user_id = currentUser.uid;
+                payload.debug_mode = debugMode; 
+
+                try {  
+                    const token = await currentUser.getIdToken(true);  
+                    console.log("DEBUG: Fetching token and sending request to:", config.CLOUD_FUNCTION_URL);
+                    const response = await fetch(config.CLOUD_FUNCTION_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify(payload)
+                    });
+                    console.log("DEBUG: Backend response status:", response.status);
+                    
+                    if (!response.ok) {  
+                        const errorData = await response.json().catch(() => ({ response: `${i18nStrings.apiError} HTTP: ${response.status}`, status: "error" }));
+                        console.error("DEBUG: Backend returned non-OK status:", response.status, "Error data:", errorData);
+                        return {status: "error", response: errorData.response || `${i18nStrings.apiError} HTTP ${response.status}`};
+                    }
+                    const data = await response.json();
+                    if (typeof data !== 'object' || data === null) {
+                        console.error("DEBUG: Backend returned invalid or empty JSON data:", data);
+                        return {status: "error", response: "Resposta inválida do servidor."};
+                    }
+                    const finalPayload = data.response_payload || data; 
+                    if (!finalPayload || typeof finalPayload !== 'object' || !finalPayload.status) {
+                        console.error("DEBUG: Backend returned unexpected payload structure:", data);
+                        return {status: "error", response: "Resposta inválida do servidor ou payload ausente."};
+                    }
+                    console.log("DEBUG: Backend response data (parsed payload):", finalPayload);
+                    return finalPayload;
+                }
+                catch (error) {
+                    console.error("DEBUG: Erro em callBackendAPI:", error);
+                    if (error instanceof TypeError && error.message === 'Failed to fetch') {
+                        showToast("Erro de conexão (CORS/rede). Verifique a URL do backend.", 'error');
+                        return {status: "error", response: "Erro de conexão com o servidor. Verifique o console para detalhes de CORS."};
+                    }
+                    return {status: "error", response: `${i18nStrings.apiError} ${error.message}`};
+                }
+                finally{
+                    if (isChatMessage) {
+                        hideLoading();
+                    } else {
+                        hideGlobalLoader();
+                    }
+                    console.log("DEBUG: callBackendAPI finished.");
+                }
+            }
+
+            function switchView(targetViewName) {
+                console.log("DEBUG: switchView called for:", targetViewName);
+                // elements.viewContents e elements.tabButtons são populados em initializeAppUIAndDisplay
+                if (!elements.viewContents || elements.viewContents.length === 0) {
+                    console.error("DEBUG: Views não foram inicializadas ou estão ausentes. Não é possível trocar de view. Isso indica um problema na inicialização da UI.");
+                    return;
+                }
+                if (!elements.tabButtons || elements.tabButtons.length === 0) {
+                    console.error("DEBUG: Botões de aba não encontrados. Não é possível trocar de view.");
+                    return;
+                }
+
+
+                elements.viewContents.forEach(v => {
+                    v.classList.remove('active');
+                    v.setAttribute('aria-hidden', 'true');
+                    v.setAttribute('tabindex', '-1');
+                });
+                elements.tabButtons.forEach(b => {
+                    b.classList.remove('active');
+                    b.setAttribute('aria-selected', 'false');
+                    b.setAttribute('tabindex', '-1');
+                });
+
+                // Use document.getElementById para elementos que sabemos que agora estão no DOM
+                const targetView = document.getElementById(targetViewName); 
+                const targetButton = document.querySelector(`.tab-button[data-target-view="${targetViewName.replace('ViewContent', '')}"]`);
+
+                if (targetView) {
+                    targetView.classList.add('active');
+                    targetView.setAttribute('aria-hidden', 'false');
+                    targetView.setAttribute('tabindex', '0');
+                    targetView.focus();
+                    console.log("DEBUG: View activated:", targetViewName);
+                } else {
+                    console.warn("DEBUG: Target view content not found:", targetViewName);
+                }
+                if (targetButton) {
+                    targetButton.classList.add('active');
+                    targetButton.setAttribute('aria-selected', 'true');
+                    targetButton.setAttribute('tabindex', '0');
+                } else {
+                    console.debug("DEBUG: Target tab button not found for dynamic view (e.g., routine templates):", targetViewName);
+                }
+
+                if (targetViewName !== 'chatViewContent') { 
+                    console.log("DEBUG: Loading data for non-chat view:", targetViewName);
+                    loadViewData(targetViewName.replace('ViewContent', '')); 
+                }
+                else { 
+                    if (elements.messageInput) elements.messageInput.focus(); 
+                    console.log("DEBUG: Switched to chat view.");
+                }
+            }
+
+            async function loadViewData(viewName) {
+                console.log("DEBUG: loadViewData called for:", viewName);
+                const payload = { request_type: 'chat_and_view', view_request: viewName };
+                const data = await callBackendAPI(payload);
+                if (data?.status === 'success') {
+                    const viewData = data.html_view_data;
+                    console.log("DEBUG: Data received for view:", viewName, "Data:", viewData);
+                    
+                    // Assegura que os elementos de display existam antes de tentar usar
+                    if (viewName === 'agenda' && elements.agendaDisplay) displayAgenda(viewData.agenda);
+                    else if (viewName === 'projetos' && elements.projetosDisplay) displayProjects(viewData.projetos);
+                    else if (viewName === 'rotinasTemplatesViewContent'.replace('ViewContent', '') && elements.rotinasDisplay) displayRoutinesTemplates(viewData.routines); 
+                    else if (viewName === 'emotionalMemories' && elements.emotionalMemoriesDisplay) displayEmotionalMemories(viewData.emotional_memories);  
+                    else if (viewName === 'diagnostico' && elements.diagnosticoDisplay) displayDiagnostico(viewData.diagnostico || viewData.checkpoints || viewData.self_evaluations);
+                    else if (viewName === 'longTermMemory' && elements.longTermMemoryDisplay) displayLongTermMemory(viewData.long_term_memory);  
+                    else console.warn("DEBUG: No display function or display element found for view:", viewName);
+                } else {
+                    console.error("DEBUG: Failed to load view data for:", viewName, "Response:", data);
+                    showToast(data?.response || `Erro ao carregar dados de ${viewName}`, 'error');
+                }
+            }
+
+            // Função para calcular a posição vertical em pixels (se 1px por minuto, 60px por hora)
+            function calculateTopPosition(timeStr, pixelsPerHour = 60) {
+                if (!timeStr || !timeStr.includes(':')) return 0; 
+                const [hours, minutes] = timeStr.split(':').map(Number);
+                return (hours * pixelsPerHour) + (minutes * (pixelsPerHour / 60));
+            }
+
+            // Função para calcular a altura em pixels
+            function calculateHeight(durationMinutes, pixelsPerHour = 60) {
+                return Math.max(20, (durationMinutes / 60) * pixelsPerHour);
+            }
+
+            // MODIFICADO: displayAgenda para renderizar a linha do tempo com dados expandidos
+            function displayAgenda(agendaData) {
+                console.log("DEBUG: displayAgenda called. agendaData:", agendaData);
+                const displayArea = elements.agendaDisplay; 
+                if (!displayArea) { console.warn("DEBUG: agendaDisplay element not found."); return; }
+                displayArea.innerHTML = '';
+
+                const now = new Date();
+                const todayISO = now.toLocaleDateString('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }); 
+                
+                const todayData = agendaData[todayISO]; 
+
+                if (!todayData || !todayData.tasks || todayData.tasks.length === 0) {
+                    displayArea.innerHTML = `<p class="no-data-message">${i18nStrings.noDataMessageAgenda}</p>`;
+                    console.log("DEBUG: No tasks for today, displayed empty message.");
+                    return;
+                }
+
+                const timelineGrid = document.createElement('div');
+                timelineGrid.className = 'agenda-timeline-grid';
+
+                for (let h = 0; h < 24; h++) {
+                    const timeLabel = document.createElement('div');
+                    timeLabel.className = 'time-label';
+                    timeLabel.textContent = `${String(h).padStart(2, '0')}:00`;
+                    timeLabel.style.gridRowStart = h + 1;
+                    timeLabel.style.gridRowEnd = h + 2;
+                    timelineGrid.appendChild(timeLabel);
+
+                    const hourLine = document.createElement('div');
+                    hourLine.className = 'timeline-hour-line';
+                    hourLine.style.gridRowStart = h + 1;
+                    hourLine.style.gridRowEnd = h + 2;
+                    timelineGrid.appendChild(hourLine);
+                }
+
+                const currentTimeIndicator = document.createElement('div');
+                currentTimeIndicator.className = 'timeline-current-time-indicator';
+                timelineGrid.appendChild(currentTimeIndicator);
+
+                function updateCurrentTimeIndicator() {
+                    const nowLocal = new Date();
+                    const hours = nowLocal.getHours();
+                    const minutes = nowLocal.getMinutes();
+                    const seconds = nowLocal.getSeconds();
+                    
+                    const totalMinutesToday = (hours * 60) + minutes;
+                    const pixelsPerMinute = 60 / 60; 
+                    const topPosition = totalMinutesToday * pixelsPerMinute;
+                    
+                    currentTimeIndicator.style.top = `${topPosition}px`;
+                    
+                    if (displayArea) { 
+                        const viewportHeight = displayArea.clientHeight;
+                        displayArea.scrollTop = topPosition - (viewportHeight / 2); 
+                    }
+                }
+                setInterval(updateCurrentTimeIndicator, 30 * 1000); 
+                updateCurrentTimeIndicator(); 
+
+                todayData.tasks.forEach(task => {
+                    const eventBlock = renderAgendaEventBlock(task, todayISO);
+                    if (eventBlock) {
+                        const top = calculateTopPosition(task.time);
+                        const height = calculateHeight(task.duration_minutes);
+                        eventBlock.style.top = `${top}px`;
+                        eventBlock.style.height = `${height}px`;
+                        timelineGrid.appendChild(eventBlock);
+                    }
+                });
+
+                displayArea.appendChild(timelineGrid); 
+                console.log("DEBUG: displayAgenda finished.");
+            }
+
+            // Renderiza um bloco de evento na linha do tempo com ícones e metadados
+            function renderAgendaEventBlock(task, dateStr) {
+                if (!elements.agendaEventBlockTemplate) { console.warn("DEBUG: agendaEventBlockTemplate not found."); return null; }
+                const block = elements.agendaEventBlockTemplate.content.cloneNode(true).firstElementChild;
+                
+                block.dataset.id = task.id;
+                block.dataset.date = dateStr;
+                block.dataset.description = task.description;
+                block.dataset.time = task.time;
+                block.dataset.durationMinutes = task.duration_minutes;
+                block.dataset.completed = task.completed;
+                block.dataset.origin = task.origin; 
+                block.dataset.routineItemId = task.routine_item_id || '';
+                block.dataset.googleCalendarEventId = task.google_calendar_event_id || '';
+                block.dataset.createdAt = task.created_at || '';
+                block.dataset.updatedAt = task.updated_at || '';
+
+                block.querySelector('.event-time').textContent = task.time;
+                block.querySelector('.event-description').textContent = escapeHTML(task.description);
+
+                if (task.completed) block.classList.add('task-completed');
+                block.classList.add(`origin-${task.origin}`); 
+
+                const iconsContainer = block.querySelector('.event-icons');
+                iconsContainer.innerHTML = ''; 
+
+                // Adicionar badge de origem
+                const badge = document.createElement('span');
+                badge.className = 'event-badge';
+                
+                if (task.origin === 'google_calendar') {
+                    badge.classList.add('badge-google');
+                    badge.innerHTML = '<i class="material-icons">event</i><span>Google</span>';
+                    badge.title = 'Evento do Google Calendar';
+                    iconsContainer.appendChild(badge);
+                } else if (task.origin === 'routine_applied') {
+                    badge.classList.add('badge-routine');
+                    badge.innerHTML = '<i class="material-icons">repeat</i><span>Rotina</span>';
+                    badge.title = 'Tarefa de Rotina';
+                    iconsContainer.appendChild(badge);
+                } else { // user_added
+                    badge.classList.add('badge-eixa');
+                    badge.innerHTML = '<i class="material-icons">person</i><span>Você</span>';
+                    badge.title = 'Tarefa Criada por Você';
+                    iconsContainer.appendChild(badge);
+                    
+                    if (task.completed) {
+                        const checkIcon = document.createElement('i');
+                        checkIcon.className = 'material-icons completion-icon';
+                        checkIcon.textContent = 'check_circle';
+                        checkIcon.title = 'Tarefa Concluída';
+                        iconsContainer.appendChild(checkIcon);
+                    }
+                }
+                
+                return block;
+            }
+
+            function displayProjects(projectsData) {
+                console.log("DEBUG: displayProjects called with data:", projectsData);
+                const displayArea = elements.projetosDisplay;
+                if (!displayArea) { console.warn("DEBUG: projetosDisplay element not found."); return; }
+                displayArea.innerHTML = '';
+
+                if (!projectsData || projectsData.length === 0) {
+                    displayArea.innerHTML = `<p class="no-data-message">${i18nStrings.noDataMessageProjects}</p>`;
+                    console.log("DEBUG: No projects data found.");
+                    return;
+                }
+
+                const grid = document.createElement('div');
+                grid.className = 'cards-grid';
+                projectsData.forEach(p => {
+                    const renderedCard = renderProjectCard(p);
+                    if (renderedCard) { grid.appendChild(renderedCard); }
+                });
+                displayArea.appendChild(grid);
+                console.log(`DEBUG: Displayed ${projectsData.length} projects.`);
+            }
+
+            function renderProjectCard(project) {
+                if (!elements.projectCardTemplate) { console.warn("DEBUG: projectCardTemplate not found."); return null; }
+                const card = elements.projectCardTemplate.content.cloneNode(true).firstElementChild;
+                card.dataset.id = project.id;
+                card.querySelector('h4').textContent = escapeHTML(project.name);
+                card.querySelector('.project-description').textContent = escapeHTML(project.description || 'Sem descrição.');
+                card.querySelector('.project-status-display').textContent = escapeHTML(project.status || 'N/A');  
+                card.querySelector('.project-deadline').textContent = formatDate(project.deadline);
+
+                const microtasksList = card.querySelector('.project-microtasks-list');
+                microtasksList.innerHTML = '';
+                if (project.micro_tasks?.length > 0) {
+                    project.micro_tasks.forEach(mt => {
+                        const li = document.createElement('li');
+                        li.textContent = escapeHTML(mt.description);
+                        if (mt.completed) li.classList.add('completed');
+                        microtasksList.appendChild(li);
+                    });
+                } else {
+                    microtasksList.innerHTML = '<li>Nenhuma microtarefa.</li>';
+                }
+                return card;
+            }
+
+            // NOVO: Função para exibir os TEMPLATES de Rotinas (agora em uma view separada se loadViewData('rotinasTemplatesViewContent') for chamado)
+            function displayRoutinesTemplates(routinesData) {
+                console.log("DEBUG: displayRoutinesTemplates called with data:", routinesData);
+                const displayArea = elements.rotinasDisplay; 
+                if (!displayArea) { console.warn("DEBUG: rotinasDisplay element not found."); return; }
+                displayArea.innerHTML = '';
+
+                if (!routinesData || routinesData.length === 0) {
+                    displayArea.innerHTML = `<p class="no-data-message">${i18nStrings.noDataMessageRoutines}</p>`;
+                    console.log("DEBUG: No routines data found.");
+                    return;
+                }
+
+                const grid = document.createElement('div');
+                grid.className = 'cards-grid';
+                routinesData.forEach(r => {
+                    const renderedCard = renderRoutineCard(r);
+                    if (renderedCard) { grid.appendChild(renderedCard); }
+                });
+                displayArea.appendChild(grid);
+                console.log(`DEBUG: Displayed ${routinesData.length} routine templates.`);
+            }
+
+            function renderRoutineCard(routine) {
+                if (!elements.routineCardTemplate) { console.warn("DEBUG: routineCardTemplate not found."); return null; }
+                const card = elements.routineCardTemplate.content.cloneNode(true).firstElementChild;
+                card.dataset.id = routine.id;
+                card.querySelector('.routine-name-display').textContent = escapeHTML(routine.name);
+                card.querySelector('.routine-description').textContent = escapeHTML(routine.description || 'Sem descrição.');
+                
+                const daysOfWeek = routine.applies_to_days && routine.applies_to_days.length > 0
+                    ? routine.applies_to_days.map(d => {
+                        const dayNames = {
+                            "MONDAY": "Seg", "TUESDAY": "Ter", "WEDNESDAY": "Qua",
+                            "THURSDAY": "Qui", "FRIDAY": "Sex", "SATURDAY": "Sáb", "SUNDAY": "Dom"
+                        };
+                        return dayNames[d] || d;
+                    }).join(', ')
+                    : 'Todos os dias';
+                card.querySelector('.routine-days-display').textContent = daysOfWeek;
+
+                const scheduleList = card.querySelector('.routine-schedule-list');
+                scheduleList.innerHTML = '';
+                if (routine.schedule && routine.schedule.length > 0) {
+                    routine.schedule.forEach(item => {
+                        const li = document.createElement('li');
+                        li.innerHTML = `<i class="material-icons">event</i> 
+                                        <strong>${escapeHTML(item.time)}</strong> - 
+                                        ${escapeHTML(item.description)} (${item.duration_minutes || 0}min)
+                                        <span style="font-size: 0.8em; opacity: 0.7; margin-left: auto;">
+                                            (ID: ${item.id ? escapeHTML(item.id.substring(0,4)) + '...' : 'N/A'})
+                                            (Criado: ${formatDateTime(item.created_at) || 'N/A'})
+                                        </span>`;
+                        scheduleList.appendChild(li);
+                    });
+                } else {
+                    scheduleList.innerHTML = '<li>Nenhum item agendado.</li>';
+                }
+                return card;
+            }
+
+            function displayEmotionalMemories(memoriesData) {
+                console.log("DEBUG: displayEmotionalMemories called with data:", memoriesData);
+                const displayArea = elements.emotionalMemoriesDisplay;
+                if (!displayArea) { console.warn("DEBUG: emotionalMemoriesDisplay element not found."); return; }
+                displayArea.innerHTML = '';  
+
+                if (!memoriesData || memoriesData.length === 0) {
+                    displayArea.innerHTML = `<p class="no-data-message">${i18nStrings.noDataMessageEmotionalMemories}</p>`;
+                    console.log("DEBUG: No emotional memories data found.");
+                    return;
+                }
+
+                memoriesData.forEach(mem => {
+                    const card = elements.emotionalMemoryCardTemplate.content.cloneNode(true).firstElementChild;
+                    card.querySelector('.memory-timestamp span').textContent = formatDateTime(mem.timestamp);
+                    card.querySelector('.memory-content').innerHTML = parseMarkdownToHtml(mem.content);  
+
+                    const tagsContainer = card.querySelector('.memory-tags-list');
+                    if (mem.tags && mem.tags.length > 0) {
+                        mem.tags.forEach(tag => {
+                            const span = document.createElement('span');
+                            span.className = 'memory-tag';  
+                            span.textContent = escapeHTML(tag.replace(/_/g, ' '));  
+                            tagsContainer.appendChild(span);
+                        });
+                    } else {
+                        tagsContainer.innerHTML = '<span class="memory-tag no-tags">Sem tags</span>';
+                    }
+                    displayArea.appendChild(card);
+                });
+                console.log(`DEBUG: Displayed ${memoriesData.length} emotional memories.`);
+            }
+
+            // displayDiagnostico - exibe checkpoints semanais e autoavaliações
+            async function displayDiagnostico(diagnosticoData) {
+                console.log("DEBUG: displayDiagnostico called with data:", diagnosticoData);
+                const displayArea = elements.diagnosticoDisplay;
+                if (!displayArea) {
+                    console.warn("DEBUG: diagnosticoDisplay element not found.");
+                    return;
+                }
+                displayArea.innerHTML = '';
+
+                if (!diagnosticoData || diagnosticoData.length === 0) {
+                    displayArea.innerHTML = `<p class="no-data-message">${i18nStrings.noDataMessageDiagnostico}</p>`;
+                    console.log("DEBUG: No diagnostico data found.");
+                    return;
+                }
+
+                // Criar cards para cada checkpoint/self-evaluation
+                diagnosticoData.forEach(item => {
+                    const card = document.createElement('div');
+                    card.className = 'diagnostic-card';
+                    
+                    const title = document.createElement('h3');
+                    title.textContent = item.title || 'Checkpoint';
+                    card.appendChild(title);
+
+                    const date = document.createElement('p');
+                    date.className = 'diagnostic-date';
+                    date.innerHTML = `<strong>Data:</strong> ${formatDateForDisplay(item.date || item.timestamp)}`;
+                    card.appendChild(date);
+
+                    const content = document.createElement('div');
+                    content.className = 'diagnostic-content';
+                    content.innerHTML = formatMarkdownToHTML(item.content || item.analysis || '');
+                    card.appendChild(content);
+
+                    // Se houver insights ou padrões identificados
+                    if (item.insights || item.patterns) {
+                        const insights = document.createElement('div');
+                        insights.className = 'diagnostic-insights';
+                        insights.innerHTML = `<strong>Insights:</strong><br>${formatMarkdownToHTML(item.insights || item.patterns || '')}`;
+                        card.appendChild(insights);
+                    }
+
+                    // Se houver score ou métricas
+                    if (item.score !== undefined || item.metrics) {
+                        const metrics = document.createElement('div');
+                        metrics.className = 'diagnostic-metrics';
+                        let metricsHTML = '<strong>Métricas:</strong><br>';
+                        if (item.score !== undefined) {
+                            metricsHTML += `Score: ${item.score}/10<br>`;
+                        }
+                        if (item.metrics) {
+                            for (const [key, value] of Object.entries(item.metrics)) {
+                                metricsHTML += `${key}: ${value}<br>`;
+                            }
+                        }
+                        metrics.innerHTML = metricsHTML;
+                        card.appendChild(metrics);
+                    }
+
+                    displayArea.appendChild(card);
+                });
+
+                console.log(`DEBUG: Displayed ${diagnosticoData.length} diagnostic items.`);
+            }
+
+            // displayLongTermMemory para incluir status do Google Calendar e botão para Templates de Rotina
+            async function displayLongTermMemory(profileData) {
+                console.log("DEBUG: displayLongTermMemory called with data:", profileData);
+                const displayArea = elements.longTermMemoryDisplay;
+                if (!displayArea) { console.warn("DEBUG: longTermMemoryDisplay element not found."); return; }
+                displayArea.innerHTML = '';  
+
+                if (!profileData || Object.keys(profileData).length === 0) {
+                    displayArea.innerHTML = `<p class="no-data-message">${i18nStrings.noDataMessageLongTermMemory}</p>`;
+                    console.log("DEBUG: No long term memory profile data found.");
+                    return;
+                }
+
+                const profileContainer = elements.longTermProfileTemplate.content.cloneNode(true).firstElementChild;
+
+                // Preencher campos de texto simples
+                const simpleFields = {
+                    'name': profileData.name,
+                    'locale': profileData.locale,
+                    'timezone': profileData.timezone,
+                    'tone_preference': profileData.communication_preferences?.tone_preference,
+                    'intervention_style': profileData.communication_preferences?.intervention_style,
+                    'professional': profileData.life_domains?.professional,
+                    'personal_relationships': profileData.life_domains?.personal_relationships,
+                    'health_and_wellness': profileData.life_domains?.health_and_wellness
+                };
+                for (const field in simpleFields) {
+                    const element = profileContainer.querySelector(`[data-field="${field}"]`);
+                    if (element) {
+                        element.textContent = escapeHTML(String(simpleFields[field] || 'N/A').replace(/_/g, ' '));
+                    }
+                }
+
+                // Preencher listas
+                const listFields = {
+                    'personality_traits': profileData.psychological_profile?.personality_traits,
+                    'diagnoses_and_conditions': profileData.psychological_profile?.diagnoses_and_conditions,
+                    'historical_behavioral_patterns': profileData.psychological_profile?.historical_behavioral_patterns,
+                    'coping_mechanisms': profileData.psychological_profile?.coping_mechanisms,
+                    'cognitive_style': profileData.cognitive_style,
+                    'expected_eixa_actions': profileData.eixa_interaction_preferences?.expected_eixa_actions,
+                    'specific_no_gos': profileData.eixa_interaction_preferences?.specific_no_gos
+                };
+                for (const field in listFields) {
+                    const ul = profileContainer.querySelector(`[data-field="${field}"]`);
+                    if (ul) {
+                        ul.innerHTML = '';  
+                        const items = listFields[field];
+                        if (items && items.length > 0) {
+                            items.forEach(item => {
+                                const li = document.createElement('li');
+                                li.textContent = escapeHTML(String(item).replace(/_/g, ' '));  
+                                ul.appendChild(li);
+                            });
+                        } else {
+                            ul.innerHTML = '<li>Nenhum item registrado.</li>';
+                        }
+                    }
+                }
+
+                // Referências para os elementos DENTRO DESTE FRAGMENTO CLONADO (profileContainer)
+                const googleCalendarStatusElement = profileContainer.querySelector('#googleCalendarStatus');
+                const connectBtn = profileContainer.querySelector('#connectGoogleCalendarBtn');
+                const syncBtn = profileContainer.querySelector('#syncGoogleCalendarBtn');
+                const disconnectBtn = profileContainer.querySelector('#disconnectGoogleCalendarBtn');
+                const viewRoutineTemplatesBtn = profileContainer.querySelector('#viewRoutineTemplatesBtn'); 
+                const mobileThemeToggleBtn = profileContainer.querySelector('#mobileThemeToggleBtn');
+                const mobileSignOutBtn = profileContainer.querySelector('#mobileSignOutBtn');
+
+                if (googleCalendarStatusElement) {
+                    googleCalendarStatusElement.textContent = i18nStrings.connectGoogleCalendarStatusChecking;
+                }
+
+                // Chamada ao backend para verificar se há credenciais válidas
+                const checkCredsPayload = {
+                    user_id: currentUser.uid,
+                    request_type: 'chat_and_view', 
+                    view_request: 'google_calendar_connection_status' 
+                };
+                const credsResponse = await callBackendAPI(checkCredsPayload);
+                
+                if (credsResponse && credsResponse.status === 'success' && credsResponse.html_view_data?.google_calendar_connected_status !== undefined) {
+                    if (credsResponse.html_view_data.google_calendar_connected_status === true) {
+                        if (googleCalendarStatusElement) googleCalendarStatusElement.textContent = i18nStrings.connectGoogleCalendarStatusConnected;
+                        if (connectBtn) connectBtn.style.display = 'none';
+                        if (syncBtn) syncBtn.style.display = 'inline-flex';
+                        if (disconnectBtn) disconnectBtn.style.display = 'inline-flex';
+                        console.log("DEBUG: Google Calendar is connected.");
+                    } else {
+                        if (googleCalendarStatusElement) googleCalendarStatusElement.textContent = i18nStrings.connectGoogleCalendarStatusNotConnected;
+                        if (connectBtn) connectBtn.style.display = 'inline-flex';
+                        if (syncBtn) syncBtn.style.display = 'none';
+                        if (disconnectBtn) disconnectBtn.style.display = 'none';
+                        console.log("DEBUG: Google Calendar is NOT connected.");
+                    }
+                } else {
+                    if (googleCalendarStatusElement) googleCalendarStatusElement.textContent = i18nStrings.connectGoogleCalendarStatusNotConnected;
+                    if (connectBtn) connectBtn.style.display = 'inline-flex';
+                    if (syncBtn) syncBtn.style.display = 'none';
+                    if (disconnectBtn) disconnectBtn.style.display = 'none';
+                    console.error("DEBUG: Failed to retrieve Google Calendar connection status or unexpected response:", credsResponse);
+                }
+
+                // ANEXAR LISTENERS DIRETAMENTE aos botões recém-criados no template do perfil
+                if (connectBtn) connectBtn.addEventListener('click', handleConnectGoogleCalendar);
+                if (syncBtn) syncBtn.addEventListener('click', handleSyncGoogleCalendar);
+                if (disconnectBtn) disconnectBtn.addEventListener('click', handleDisconnectGoogleCalendar);
+                if (viewRoutineTemplatesBtn) viewRoutineTemplatesBtn.addEventListener('click', (e) => {
+                    e.stopPropagation(); 
+                    switchView('rotinasTemplatesViewContent'); 
+                });
+                if (mobileThemeToggleBtn) {
+                    mobileThemeToggleBtn.addEventListener('click', toggleTheme);
+                    const iconElement = mobileThemeToggleBtn.querySelector('.material-icons');
+                    if (iconElement) {
+                        iconElement.textContent = currentTheme === 'dark-mode' ? 'light_mode' : 'dark_mode';
+                    }
+                }
+                if (mobileSignOutBtn) mobileSignOutBtn.addEventListener('click', () => firebase.auth().signOut());
+
+
+                displayArea.appendChild(profileContainer);
+                console.log("DEBUG: Profile displayed.");
+            }
+
+
+            // --- CRUD Functions ---
+            async function sendCrudRequest(itemType, action, itemId, data = {}) {  
+                console.log(`DEBUG: sendCrudRequest called - Type: ${itemType}, Action: ${action}, ID: ${itemId}, Data:`, data);
+                const payload = {
+                    request_type: 'crud_action',
+                    item_type: itemType,
+                    action,
+                    item_id: itemId,
+                    data: data  
+                };
+                const response = await callBackendAPI(payload);
+                if (response?.status === 'success') {
+                    showToast(response.message, 'success');
+                    if (response.html_view_data) {
+                        console.log("DEBUG: html_view_data received in CRUD response. Updating views directly.");
+                        if (response.html_view_data.agenda) displayAgenda(response.html_view_data.agenda);
+                        if (response.html_view_data.projetos) displayProjects(response.html_view_data.projetos);
+                        // A view de templates de rotina só será recarregada se ela estiver ativa
+                        if (response.html_view_data.routines && elements.rotinasTemplatesViewContent?.classList.contains('active')) {
+                            displayRoutinesTemplates(response.html_view_data.routines);
+                        }
+                    } else {
+                        console.warn("DEBUG: No html_view_data in CRUD response. Falling back to loadViewData.");
+                        if (itemType === 'task') loadViewData('agenda');  
+                        if (itemType === 'project') loadViewData('projetos');  
+                        if (itemType === 'routine' && elements.rotinasTemplatesViewContent?.classList.contains('active')) {
+                             loadViewData('rotinasTemplatesViewContent'.replace('ViewContent', '')); // Load the templates view
+                        }
+                    }
+                    console.log(`DEBUG: CRUD ${action} ${itemType} successful.`);
+                } else if (response?.status === 'duplicate') {
+                    showToast(response.message, 'warning');
+                    console.warn(`DEBUG: CRUD ${action} ${itemType} duplicate.`);
+                } else {
+                    showToast(response?.message || `Erro ao executar ação de ${action}.`, 'error');
+                    console.error(`DEBUG: CRUD ${action} ${itemType} failed. Response:`, response);
+                }
+                return response;  
+            }
+
+            // --- Modal Functions ---
+            async function loadProjectForEdit(projectId) {
+                console.log("DEBUG: loadProjectForEdit called for ID:", projectId);
+                const projectsDataResponse = await callBackendAPI({ request_type: 'chat_and_view', view_request: 'projetos' });
+                const projectsArray = projectsDataResponse?.html_view_data?.projetos;
+
+                const project = projectsArray?.find(p => p.id === projectId);
+
+                if (!project) { showToast('Projeto não encontrado para edição.', 'error'); console.warn("DEBUG: Project not found for edit:", projectId); return; }
+                openEditProjectModal(project);
+            }
+
+            function openEditProjectModal(project = null) {  
+                console.log("DEBUG: openEditProjectModal called. Project to edit:", project);
+                currentEditProjectId = project ? project.id : null;
+
+                const editProjectName = elements.editProjectModal.querySelector('#editProjectName');
+                const editProjectDescription = elements.editProjectModal.querySelector('#editProjectDescription');
+                const editProjectStatus = elements.editProjectModal.querySelector('#editProjectStatus');
+                const editProjectDeadline = elements.editProjectModal.querySelector('#editProjectDeadline');
+                const editProjectMicrotasks = elements.editProjectModal.querySelector('#editProjectMicrotasks');
+                const addMicrotaskButtonLabelSpan = elements.editProjectModal.querySelector('#addMicrotaskButtonLabelSpan');
+                const editProjectCancelBtn = elements.editProjectModal.querySelector('#editProjectCancelBtn');
+                const saveProjectChangesBtn = elements.editProjectModal.querySelector('#saveProjectChangesBtn');
+
+                if (editProjectName) editProjectName.value = project?.name || '';
+                if (editProjectDescription) editProjectDescription.value = project?.description || '';
+                if (editProjectStatus) editProjectStatus.value = project?.status || 'open';  
+                if (editProjectDeadline) editProjectDeadline.value = project?.deadline ? new Date(project.deadline).toISOString().split('T')[0] : '';
+                
+                if (editProjectMicrotasks) editProjectMicrotasks.innerHTML = '';
+                project?.micro_tasks?.forEach(mt => addMicrotaskToModal(mt.description, mt.completed, mt.id));
+
+                if (addMicrotaskButtonLabelSpan) addMicrotaskButtonLabelSpan.textContent = i18nStrings.addMicrotaskButtonLabel;
+                if (editProjectCancelBtn) editProjectCancelBtn.textContent = i18nStrings.cancelButtonLabel;
+                if (saveProjectChangesBtn) saveProjectChangesBtn.textContent = i18nStrings.saveChangesButtonLabel;
+
+                openModal('editProjectModal');
+            }
+
+            function addMicrotaskToModal(description = '', completed = false, id = null) {
+                console.log("DEBUG: addMicrotaskToModal called.");
+                if (!elements.microtaskEditTemplate) { console.warn("DEBUG: Microtask template not found."); return; }
+                
+                const editProjectMicrotasks = elements.editProjectModal.querySelector('#editProjectMicrotasks');
+                if (!editProjectMicrotasks) { console.warn("DEBUG: editProjectMicrotasks container not found."); return; }
+
+                const item = elements.microtaskEditTemplate.content.cloneNode(true).firstElementChild;
+                item.dataset.id = id || String(uuidv4()); 
+                
+                const descriptionInput = item.querySelector('.edit-microtask-description');
+                const completedCheckbox = item.querySelector('.edit-microtask-completed');
+                const removeButton = item.querySelector('.remove-microtask-button');
+
+                if (descriptionInput) descriptionInput.value = escapeHTML(description);
+                if (completedCheckbox) completedCheckbox.checked = completed;
+                
+                if (removeButton) {
+                    removeButton.onclick = () => {
+                        console.log("DEBUG: Removing microtask item.");
+                        item.remove();  
+                    };  
+                } else {
+                    console.warn("DEBUG: Remove microtask button not found in template.");
+                }
+                
+                editProjectMicrotasks.appendChild(item);
+            }
+
+            async function saveProjectChanges() {
+                console.log("DEBUG: saveProjectChanges called.");
+                const editProjectName = elements.editProjectModal.querySelector('#editProjectName');
+                const editProjectDescription = elements.editProjectModal.querySelector('#editProjectDescription');
+                const editProjectStatus = elements.editProjectModal.querySelector('#editProjectStatus');
+                const editProjectDeadline = elements.editProjectModal.querySelector('#editProjectDeadline');
+                const editProjectMicrotasks = elements.editProjectModal.querySelector('#editProjectMicrotasks');
+
+                if (!editProjectName || !editProjectName.value.trim()) {  
+                    showToast('O nome do projeto é obrigatório.', 'warning');  
+                    console.warn("DEBUG: Project name is empty.");
+                    return;  
+                }
+
+                const updates = {
+                    name: editProjectName.value.trim(),
+                    description: editProjectDescription.value.trim(),
+                    status: editProjectStatus.value,  
+                    deadline: editProjectDeadline.value || null,
+                    micro_tasks: Array.from(editProjectMicrotasks.querySelectorAll('.modal-microtask-item')).map(item => ({
+                        id: item.dataset.id, 
+                        description: item.querySelector('.edit-microtask-description').value.trim(),
+                        completed: item.querySelector('.edit-microtask-completed').checked
+                    })).filter(mt => mt.description)  
+                };
+                
+                const action = currentEditProjectId ? 'update' : 'create';
+                console.log(`DEBUG: Saving project - Action: ${action}, ID: ${currentEditProjectId}, Updates:`, updates);
+                const response = await sendCrudRequest('project', action, currentEditProjectId, updates);
+                if (response?.status === 'success') {
+                    closeModal('editProjectModal');
+                    console.log("DEBUG: Project changes saved successfully.");
+                } else {
+                    console.error("DEBUG: Failed to save project changes:", response);
+                }
+            }
+
+            function openAddTaskModal() {
+                console.log("DEBUG: openAddTaskModal called.");
+                const newTaskDescription = elements.addTaskModal.querySelector('#newTaskDescription');
+                const newTaskDate = elements.addTaskModal.querySelector('#newTaskDate');
+                const newTaskTime = elements.addTaskModal.querySelector('#newTaskTime');
+                const newTaskDuration = elements.addTaskModal.querySelector('#newTaskDuration');
+                const addTaskCancelBtn = elements.addTaskModal.querySelector('#addTaskCancelBtn');
+                const saveNewTaskBtn = elements.addTaskModal.querySelector('#saveNewTaskBtn');
+
+                if (newTaskDescription) newTaskDescription.value = '';
+                if (newTaskDate) newTaskDate.value = new Date().toISOString().split('T')[0];
+                if (newTaskTime) newTaskTime.value = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                if (newTaskDuration) newTaskDuration.value = 60;
+                
+                if (addTaskCancelBtn) addTaskCancelBtn.textContent = i18nStrings.cancelButtonLabel;
+                if (saveNewTaskBtn) saveNewTaskBtn.textContent = i18nStrings.saveTaskButtonLabel;
+
+                openModal('addTaskModal');
+            }
+
+            async function saveNewTask() {
+                console.log("DEBUG: saveNewTask called.");
+                const newTaskDescription = elements.addTaskModal.querySelector('#newTaskDescription');
+                const newTaskDate = elements.addTaskModal.querySelector('#newTaskDate');
+                const newTaskTime = elements.addTaskModal.querySelector('#newTaskTime');
+                const newTaskDuration = elements.addTaskModal.querySelector('#newTaskDuration');
+
+                const description = newTaskDescription.value.trim();
+                const date = newTaskDate.value;
+                const time = newTaskTime.value;
+                const duration = parseInt(newTaskDuration.value);
+
+                if (!description || !date || !time) { showToast(i18nStrings.taskDescriptionAndDateRequired, 'warning'); console.warn("DEBUG: Task description, date or time is empty."); return; }
+                
+                const response = await sendCrudRequest('task', 'create', null, { description: description, date: date, time: time, duration_minutes: duration });
+                
+                if (response?.status === 'success') {
+                    showToast(i18nStrings.taskAddSuccess, 'success');
+                    closeModal('addTaskModal');
+                    if (newTaskDescription) newTaskDescription.value = '';
+                    if (newTaskDate) newTaskDate.value = '';
+                    if (newTaskTime) newTaskTime.value = '';
+                    if (newTaskDuration) newTaskDuration.value = '';
+                    console.log("DEBUG: New task saved successfully via direct CRUD.");
+                } else {
+                    console.error("DEBUG: Failed to save new task:", response);
+                }
+            }
+
+            // Funções para Modais de Rotina
+            async function loadRoutineForEdit(routineId) {
+                console.log("DEBUG: loadRoutineForEdit called for ID:", routineId);
+                const routinesDataResponse = await callBackendAPI({ request_type: 'chat_and_view', view_request: 'rotinasTemplatesViewContent'.replace('ViewContent', '') }); 
+                const routinesArray = routinesDataResponse?.html_view_data?.routines;
+
+                const routine = routinesArray?.find(r => r.id === routineId);
+
+                if (!routine) { showToast('Rotina não encontrada para edição.', 'error'); console.warn("DEBUG: Routine not found for edit:", routineId); return; }
+                openEditRoutineModal(routine);
+            }
+
+            function openEditRoutineModal(routine = null) {
+                console.log("DEBUG: openEditRoutineModal called. Routine to edit:", routine);
+                currentEditRoutineId = routine ? routine.id : null;
+
+                const routineNameInput = elements.editRoutineModal.querySelector('#routineName');
+                const routineDescriptionInput = elements.editRoutineModal.querySelector('#routineDescription');
+                const routineDaysOfWeekCheckboxes = elements.editRoutineModal.querySelectorAll('#routineDaysOfWeek input[type="checkbox"]');
+                const routineRecurrenceRuleInput = elements.editRoutineModal.querySelector('#routineRecurrenceRule'); // NEW REFERENCE
+                const routineItemsContainer = elements.editRoutineModal.querySelector('#routineItemsContainer');
+                const routineCancelBtn = elements.editRoutineModal.querySelector('#routineCancelBtn');
+                const saveRoutineBtn = elements.editRoutineModal.querySelector('#saveRoutineBtn');
+                const addRoutineItemModalBtn = elements.editRoutineModal.querySelector('#addRoutineItemModalBtn');
+
+                if (routineNameInput) routineNameInput.value = routine?.name || '';
+                if (routineDescriptionInput) routineDescriptionInput.value = routine?.description || '';
+                if (routineRecurrenceRuleInput) routineRecurrenceRuleInput.value = routine?.recurrence_rule || ''; // NEW: Populate recurrence rule
+                
+                // Reset e preenche os dias da semana
+                if (routineDaysOfWeekCheckboxes) {
+                    routineDaysOfWeekCheckboxes.forEach(checkbox => {
+                        checkbox.checked = false; 
+                    });
+                    if (routine?.applies_to_days) {
+                        routine?.applies_to_days.forEach(day => {
+                            const checkbox = elements.editRoutineModal.querySelector(`input[data-day="${day}"]`);
+                            if (checkbox) checkbox.checked = true;
+                        });
+                    }
+                }
+
+                if (routineItemsContainer) routineItemsContainer.innerHTML = '';
+                routine?.schedule?.forEach(item => addRoutineItemToModal(item));
+
+                if (routineCancelBtn) routineCancelBtn.textContent = i18nStrings.cancelButtonLabel;
+                if (saveRoutineBtn) saveRoutineBtn.textContent = i18nStrings.saveRoutineButtonLabel;
+                if (addRoutineItemModalBtn) addRoutineItemModalBtn.textContent = i18nStrings.addRoutineItemButtonLabel;
+
+                openModal('editRoutineModal');
+            }
+
+            function addRoutineItemToModal(item = null) {
+                console.log("DEBUG: addRoutineItemToModal called with item:", item);
+                if (!elements.routineItemEditTemplate) { console.warn("DEBUG: Routine item template not found."); return; }
+                
+                const routineItemsContainer = elements.editRoutineModal.querySelector('#routineItemsContainer');
+                if (!routineItemsContainer) { console.warn("DEBUG: routineItemsContainer not found."); return; }
+
+                const newItem = elements.routineItemEditTemplate.content.cloneNode(true).firstElementChild;
+                newItem.dataset.id = item?.id || String(uuidv4());
+                
+                const timeInput = newItem.querySelector('.edit-routine-item-time');
+                const durationInput = newItem.querySelector('.edit-routine-item-duration');
+                const descriptionInput = newItem.querySelector('.edit-routine-item-description');
+                const removeButton = newItem.querySelector('.remove-routine-item-button');
+
+                if (timeInput) timeInput.value = item?.time || '09:00';
+                if (durationInput) durationInput.value = item?.duration_minutes || 60;
+                if (descriptionInput) descriptionInput.value = escapeHTML(item?.description || '');
+                
+                if (removeButton) {
+                    removeButton.onclick = () => {
+                        console.log("DEBUG: Removing routine item.");
+                        newItem.remove();
+                    };
+                } else {
+                    console.warn("DEBUG: Remove routine item button not found in template.");
+                }
+                
+                routineItemsContainer.appendChild(newItem);
+            }
+
+            async function saveRoutine() {
+                console.log("DEBUG: saveRoutine called.");
+                const routineNameInput = elements.editRoutineModal.querySelector('#routineName');
+                const routineDescriptionInput = elements.editRoutineModal.querySelector('#routineDescription');
+                const routineDaysOfWeekCheckboxes = elements.editRoutineModal.querySelectorAll('#routineDaysOfWeek input[type="checkbox"]');
+                const routineRecurrenceRuleInput = elements.editRoutineModal.querySelector('#routineRecurrenceRule'); // NEW REFERENCE
+                const routineItemsContainer = elements.editRoutineModal.querySelector('#routineItemsContainer');
+
+                if (!routineNameInput || !routineNameInput.value.trim()) {
+                    showToast(i18nStrings.routineNameRequired, 'warning');
+                    console.warn("DEBUG: Routine name is empty.");
+                    return;
+                }
+
+                const selectedDays = Array.from(routineDaysOfWeekCheckboxes)
+                                        .filter(cb => cb.checked)
+                                        .map(cb => cb.dataset.day);
+
+                const routineSchedule = [];
+                const routineItems = Array.from(routineItemsContainer.querySelectorAll('.modal-routine-item'));
+                for (const itemElement of routineItems) {
+                    const time = itemElement.querySelector('.edit-routine-item-time').value;
+                    const duration = parseInt(itemElement.querySelector('.edit-routine-item-duration').value);
+                    const description = itemElement.querySelector('.edit-routine-item-description').value.trim();
+
+                    if (!time || isNaN(duration) || duration < 0 || !description) {
+                        showToast(i18nStrings.routineItemDescriptionTimeRequired, 'warning');
+                        console.warn("DEBUG: Missing or invalid routine item details.");
+                        return;
+                    }
+                    routineSchedule.push({
+                        id: itemElement.dataset.id, 
+                        time,
+                        duration_minutes: duration,
+                        description
+                    });
+                }
+
+                const updates = {
+                    name: routineNameInput.value.trim(),
+                    description: routineDescriptionInput.value.trim(),
+                    applies_to_days: selectedDays,
+                    recurrence_rule: routineRecurrenceRuleInput.value.trim() || null, // NEW: Include recurrence rule
+                    schedule: routineSchedule
+                };
+                
+                const action = currentEditRoutineId ? 'update' : 'create';
+                const routineIdToSave = currentEditRoutineId || String(uuidv4()); 
+
+                console.log(`DEBUG: Saving routine - Action: ${action}, ID: ${routineIdToSave}, Updates:`, updates);
+                const response = await sendCrudRequest('routine', action, routineIdToSave, updates);
+                if (response?.status === 'success') {
+                    showToast(i18nStrings.routineAddSuccess, 'success');
+                    closeModal('editRoutineModal');
+                    console.log("DEBUG: Routine changes saved successfully.");
+                } else {
+                    showToast(response?.message || i18nStrings.routineCreateError, 'error');
+                    console.error("DEBUG: Failed to save routine changes:", response);
+                }
+            }
+
+
+            function uuidv4() {
+                return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                    return v.toString(16);
+                });
+            }
+
+
+            // MODIFICADO: showConfirmationModal para suportar labels de botões customizadas e o terceiro botão
+            function showConfirmationModal(message, confirmCallback, declineCallback = null, secondaryConfirmCallback = null, 
+                                           inputPrompt = false, confirmLabel = i18nStrings.yesButtonLabel, declineLabel = i18nStrings.noButtonLabel, secondaryLabel = null) {
+                console.log("DEBUG: showConfirmationModal called with inputPrompt:", inputPrompt, "confirmLabel:", confirmLabel, "declineLabel:", declineLabel, "secondaryLabel:", secondaryLabel);
+                const confirmationMessageElement = elements.confirmationModal.querySelector('#confirmationMessage');
+                const confirmNoBtn = elements.confirmationModal.querySelector('#confirmNoBtn');
+                const confirmYesBtn = elements.confirmationModal.querySelector('#confirmYesBtn');
+                
+                // Remove qualquer input ou botão secundário anterior
+                const existingInputField = elements.confirmationModal.querySelector('#confirmationInputField');
+                if (existingInputField) existingInputField.remove();
+
+                const existingSecondaryButton = elements.confirmationModal.querySelector('.confirm-secondary');
+                if (existingSecondaryButton) existingSecondaryButton.remove();
+
+                // Limpa conteúdo anterior e adiciona a mensagem
+                confirmationMessageElement.innerHTML = '';
+                const p = document.createElement('p');
+                p.innerHTML = message; 
+                confirmationMessageElement.appendChild(p);
+
+                // Adiciona campo de input se inputPrompt for verdadeiro
+                let inputField = null;
+                if (inputPrompt) {
+                    inputField = document.createElement('input');
+                    inputField.type = 'text';
+                    inputField.id = 'confirmationInputField';
+                    inputField.placeholder = 'Digite aqui a data (ex: hoje, amanhã, 2024-08-15)...';
+                    inputField.className = 'modal-input-text';
+                    confirmationMessageElement.appendChild(inputField);
+                    confirmYesBtn._callback = () => confirmCallback(inputField.value.trim());
+                    console.log("DEBUG: Confirmation modal with input activated.");
+                } else {
+                    confirmYesBtn._callback = confirmCallback;
+                }
+                
+                confirmNoBtn._callback = declineCallback || (() => console.log("DEBUG: Confirmation declined (default)."));
+
+                // Configura os labels dos botões
+                confirmYesBtn.textContent = confirmLabel;
+                confirmNoBtn.textContent = declineLabel;
+
+                // Se houver um terceiro callback, cria e adiciona o botão
+                if (secondaryConfirmCallback && secondaryLabel) {
+                    const secondaryButton = document.createElement('button');
+                    secondaryButton.textContent = secondaryLabel; 
+                    secondaryButton.className = "button-secondary confirm-secondary"; 
+                    secondaryButton._callback = secondaryConfirmCallback; // Assign the callback
+                    
+                    const buttonGroup = elements.confirmationModal.querySelector('.button-group');
+                    if (buttonGroup) {
+                        buttonGroup.appendChild(secondaryButton); // Add after confirm/cancel
+                    }
+                }
+
+                openModal('confirmationModal');
+            }
+
+
+            async function handleConfirmationResponse(responseType) {
+                console.log(`DEBUG: User responded: ${responseType}`);
+                if (elements.confirmationArea) {
+                    elements.confirmationArea.style.display = 'none';  
+                }
+                if (elements.messageInput) elements.messageInput.disabled = false;
+                if (elements.sendMessageBtn) elements.sendMessageBtn.disabled = false;
+                if (elements.fileUploadBtn) elements.fileUploadBtn.disabled = false;
+
+                if (elements.inputWrapper) {  
+                    elements.inputWrapper.style.display = 'flex';
+                } else {
+                    console.warn("DEBUG: inputWrapper not found when trying to hide in handleConfirmationResponse.");
+                }
+
+                let confirmationMessage;
+                if (responseType === 'yes') {
+                    confirmationMessage = "Sim, por favor.";
+                } else {
+                    confirmationMessage = "Não, cancelar.";
+                }
+
+                await handleSendMessage({ forcedMessage: confirmationMessage });
+            }
+
+            // --- Chat and Attachment Functions ---
+            function showLoading() {
+                console.log("DEBUG: showLoading called (chat).");
+                if (elements.loadingIndicator) elements.loadingIndicator.style.display = 'flex';
+                isSendingMessage = true;
+                if (elements.messageInput) elements.messageInput.disabled = true;  
+                if (elements.sendMessageBtn) elements.sendMessageBtn.disabled = true;
+                if (elements.fileUploadBtn) elements.fileUploadBtn.disabled = true;
+            }
+
+            function hideLoading() {
+                console.log("DEBUG: hideLoading called (chat).");
+                if (elements.loadingIndicator) elements.loadingIndicator.style.display = 'none';
+                isSendingMessage = false;
+                if (elements.messageInput) elements.messageInput.disabled = false;
+                if (elements.sendMessageBtn) elements.sendMessageBtn.disabled = false;
+                if (elements.fileUploadBtn) elements.fileUploadBtn.disabled = false;
+            }
+
+            async function handleSendMessage(options = {}) {
+                console.log("DEBUG: handleSendMessage called.");
+                if (!elements.messageInput) { console.warn("DEBUG: Message input element not found."); return; }
+                
+                let message = (options.forcedMessage || elements.messageInput.value.trim()).replace(/^"|"$/g, '').replace(/^'|'$/g, ''); 
+
+                if (!message && !currentFileUpload) { console.warn("DEBUG: Message or file is empty, not sending."); return; }
+
+                renderMessage(message || (currentFileUpload ? `[Arquivo: ${currentFileUpload.filename}]` : 'Mensagem vazia'), true);
+                
+                const payload = { request_type: 'chat_and_view', message, uploaded_file_data: currentFileUpload };
+                
+                elements.messageInput.value = '';
+                elements.messageInput.style.height = 'auto'; 
+                clearAttachment();
+                updateSuggestedSections(); 
+
+                const data = await callBackendAPI(payload);
+
+                if (data?.status === 'success') {
+                    if (elements.inputWrapper) { elements.inputWrapper.style.display = 'flex'; } 
+                    if (elements.confirmationArea) { elements.confirmationArea.style.display = 'none'; } 
+
+                    if (data.html_view_data) {
+                        console.log("DEBUG: html_view_data received in main response. Updating views directly.");
+                        if (data.html_view_data.agenda) {
+                            displayAgenda(data.html_view_data.agenda);
+                            showToast(`Agenda atualizada!`, 'success'); 
+                        }
+                        if (data.html_view_data.projetos) {
+                            displayProjects(data.html_view_data.projetos);
+                            showToast(`Projetos atualizados!`, 'success'); 
+                        }
+                        // A view de templates de rotina só será recarregada se ela estiver ativa
+                        if (data.html_view_data.routines && elements.rotinasTemplatesViewContent?.classList.contains('active')) {
+                            displayRoutinesTemplates(data.html_view_data.routines);
+                            showToast(`Templates de Rotina atualizados!`, 'success');
+                        }
+                        if (data.html_view_data.long_term_memory) { 
+                            displayLongTermMemory(data.html_view_data.long_term_memory);
+                            showToast(`Perfil atualizado!`, 'success');
+                        }
+                    } 
+                    
+                    if (data.debug_info?.crud_result_status === 'success') { 
+                        const intent = data.debug_info?.intent_detected;
+                        if (intent === 'task' || intent === 'project' || intent === 'routine' || intent === 'google_calendar' || intent === 'configuracao_perfil') {
+                            showToast(data.message || `${intent} atualizado com sucesso!`, 'success');
+                        }
+                    }
+
+                    // Se a resposta do backend incluir `google_auth_redirect_url`, redirecionar
+                    if (data.google_auth_redirect_url) {
+                        console.log("DEBUG: Redirect URL received for Google Auth. Redirecting...");
+                        window.location.href = data.google_auth_redirect_url;
+                        return; // Sair da função para evitar processamento adicional da resposta
+                    }
+
+                    renderMessage(data.response, false); 
+                    
+                    if (data.suggested_tasks || data.suggested_projects) {
+                        updateSuggestedSections(data.suggested_tasks, data.suggested_projects);
+                    }
+                    
+                    const activeViewElement = document.querySelector('.view-content.active');
+                    // Recarregar a view ativa (se não for chat) apenas se o html_view_data não veio E não for redirecionamento
+                    if (activeViewElement && activeViewElement.id !== 'chatViewContent' && !data.html_view_data && !data.google_auth_redirect_url) {
+                        console.log("DEBUG: Reloading current non-chat view (fallback):", activeViewElement.id.replace('ViewContent', ''));
+                        // Mudar o nome da view para 'agenda' ou 'rotinasTemplatesViewContent'
+                        let viewToLoad = activeViewElement.id.replace('ViewContent', '');
+                        if (viewToLoad === 'rotinas') viewToLoad = 'rotinasTemplatesViewContent'.replace('ViewContent', ''); 
+                        loadViewData(viewToLoad);
+                    }
+
+                } else if (data.status === 'awaiting_confirmation') {
+                    if (elements.inputWrapper) { elements.inputWrapper.style.display = 'none'; } 
+                    if (elements.confirmationArea) { elements.confirmationArea.style.display = 'flex'; } 
+                    elements.confirmationText.innerHTML = parseMarkdownToHtml(data.response); 
+                    renderMessage(data.response, false); 
+                    console.log("DEBUG: Awaiting user confirmation for action.");
+                    showToast("Confirmação necessária para a ação!", 'info', 3000);
+
+                } else {
+                    if (elements.inputWrapper) { elements.inputWrapper.style.display = 'flex'; } 
+                    if (elements.confirmationArea) { elements.confirmationArea.style.display = 'none'; } 
+                    renderMessage(data?.response || "Desculpe, não consegui processar sua solicitação. Por favor, tente novamente.", false);
+                    showToast(data?.response || `Erro ao processar sua solicitação.`, 'error');
+                }
+            }
+
+            function handleFileAttachment(event) {
+                if (!elements.fileInput || !elements.fileNameDisplay || !elements.attachmentInfoDiv || !elements.fileUploadBtn) {
+                    console.warn("DEBUG: File attachment elements not found."); return;
+                }
+                const file = event.target.files[0];
+                if (!file) { console.warn("DEBUG: No file selected."); return; }
+
+                if (file.size > config.MAX_FILE_SIZE) {
+                    showToast(i18nStrings.fileTooLarge, 'error');
+                    elements.fileInput.value = '';  
+                    console.warn("DEBUG: File too large.");
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = e => {
+                    currentFileUpload = {
+                        base64: e.target.result.split(',')[1],  
+                        filename: file.name,
+                        mimetype: file.type
+                    };
+                    elements.fileNameDisplay.textContent = file.name.length > 20 ? file.name.substring(0, 17) + '...' + file.name.slice(-3) : file.name;
+                    elements.attachmentInfoDiv.style.display = 'flex';  
+                    elements.fileUploadBtn.style.display = 'none';  
+                    console.log("DEBUG: File attached:", file.name);
+                };
+                reader.readAsDataURL(file);
+            }
+
+            function clearAttachment() {
+                if (!elements.fileInput || !elements.fileNameDisplay || !elements.attachmentInfoDiv || !elements.fileUploadBtn) {
+                    console.warn("DEBUG: Clear attachment elements not found."); return;
+                }
+                currentFileUpload = null;
+                elements.fileInput.value = '';  
+                elements.fileNameDisplay.textContent = '';
+                elements.attachmentInfoDiv.style.display = 'none';
+                elements.fileUploadBtn.style.display = 'inline-flex';
+                console.log("DEBUG: Attachment cleared.");
+            }
+
+            // --- Theme and Debug Functions ---
+            function toggleTheme() {
+                currentTheme = currentTheme === 'light-mode' ? 'dark-mode' : 'light-mode';
+                document.body.className = currentTheme;
+                localStorage.setItem('theme', currentTheme);
+                
+                // Atualiza o ícone do botão de tema estático da sidebar
+                if (elements.themeToggleBtn) {
+                    const desktopIconElement = elements.themeToggleBtn.querySelector('.material-icons');
+                    if (desktopIconElement) {
+                        desktopIconElement.textContent = currentTheme === 'dark-mode' ? 'light_mode' : 'dark_mode';
+                    }
+                }
+                // Os botões móveis são tratados dentro de displayLongTermMemory()
+                console.log("DEBUG: Theme toggled to:", currentTheme);
+            }
+
+            function applyInitialTheme() {
+                document.body.className = currentTheme;
+                if (elements.themeToggleBtn) { // Botão estático da sidebar
+                    const iconElement = elements.themeToggleBtn.querySelector('.material-icons');
+                    if (iconElement) {
+                        iconElement.textContent = currentTheme === 'dark-mode' ? 'light_mode' : 'dark_mode';
+                    }
+                }
+                // Botões móveis são atualizados quando displayLongTermMemory() é chamado
+                console.log("DEBUG: Initial theme applied:", currentTheme);
+            }
+
+            function toggleDebugMode(newState, isInitial = false) {
+                console.log("DEBUG: toggleDebugMode called, but functionality is removed from UI.");
+            }
+
+            // --- AUTHENTICATION FUNCTIONS ---
+            function disableAuthButtons(state) {
+                console.log("DEBUG: disableAuthButtons called with state:", state);
+                elements.emailInput?.toggleAttribute('disabled', state);
+                elements.passwordInput?.toggleAttribute('disabled', state);
+                elements.emailLoginBtn?.toggleAttribute('disabled', state);
+                elements.emailSignupBtn?.toggleAttribute('disabled', state);
+                elements.googleLoginBtn?.toggleAttribute('disabled', state);
+            }
+            async function handleEmailPasswordLogin() {
+                console.log("DEBUG: handleEmailPasswordLogin called.");
+                const email = elements.emailInput.value;
+                const password = elements.passwordInput.value;
+                if (!email || !password) { displayAuthError(i18nStrings.authMissingFields); return; }
+                disableAuthButtons(true);
+                showGlobalLoader();
+                try {  
+                    await firebase.auth().signInWithEmailAndPassword(email, password);  
+                    console.log("DEBUG: Email/Password login successful.");
+                    displayAuthError('');  
+                }  
+                catch (error) {  
+                    console.error("DEBUG: Email/Password login error:", error);  
+                    displayAuthError(error.message);  
+                    showToast(`${i18nStrings.loginError} ${error.message}`, 'error');  
+                }  
+                finally {  
+                    disableAuthButtons(false);  
+                    hideGlobalLoader();  
+                }
+            }
+
+            async function handleEmailPasswordSignup() {
+                console.log("DEBUG: handleEmailPasswordSignup called.");
+                const email = elements.emailInput.value;
+                const password = elements.passwordInput.value;
+                if (!email || !password) { displayAuthError(i18nStrings.authMissingFields); return; }
+                disableAuthButtons(true);
+                showGlobalLoader();
+                try {  
+                    await firebase.auth().createUserWithEmailAndPassword(email, password);  
+                    console.log("DEBUG: Email/Password signup successful.");
+                    displayAuthError('');  
+                }  
+                catch (error) {  
+                    console.error("DEBUG: Email/Password signup error:", error);  
+                    displayAuthError(error.message);  
+                    showToast(`${i18nStrings.signupError} ${error.message}`, 'error');  
+                }  
+                finally {  
+                    disableAuthButtons(false);  
+                    hideGlobalLoader();  
+                }
+            }
+
+            async function handleGoogleLogin() {
+                console.log("DEBUG: handleGoogleLogin called.");
+                disableAuthButtons(true);
+                showGlobalLoader();
+                try {
+                    const provider = new firebase.auth.GoogleAuthProvider();
+                    await firebase.auth().signInWithPopup(provider);
+                    console.log("DEBUG: Google login successful.");
+                    displayAuthError('');  
+                } catch (error) {  
+                    console.error("DEBUG: Google login error:", error);  
+                    displayAuthError(error.message);  
+                    showToast(`${i18nStrings.googleLoginError} ${error.message}`, 'error');  
+                }  
+                finally {  
+                    disableAuthButtons(false);  
+                    hideGlobalLoader();  
+                }
+            }
+
+            // Funções para Google Calendar via Frontend
+            async function handleConnectGoogleCalendar() {
+                console.log("DEBUG: handleConnectGoogleCalendar called.");
+                if (!currentUser) { showToast(i18nStrings.unauthenticated, 'error'); return; }
+                if (!config.CLOUD_FUNCTION_AUTH_URL) { showToast("URL de autenticação Google não configurada.", 'error'); return; }
+
+                showGlobalLoader();
+                try {
+                    // Send request with direct action type
+                    const payload = {
+                        user_id: currentUser.uid,
+                        request_type: 'google_calendar_action', 
+                        action: 'connect_calendar'
+                    };
+                    const response = await callBackendAPI(payload);
+
+                    if (response.status === 'success' && response.google_auth_redirect_url) {
+                        showToast("Redirecionando para autenticação Google...", 'info', 3000);
+                        window.location.href = response.google_auth_redirect_url;
+                    } else {
+                        showToast(response?.message || i18nStrings.connectGoogleCalendarError, 'error');
+                        console.error("DEBUG: Failed to get Google auth URL or unexpected response:", response);
+                    }
+                } catch (error) {
+                    showToast(i18nStrings.connectGoogleCalendarError + " " + error.message, 'error');
+                    console.error("DEBUG: Error in handleConnectGoogleCalendar:", error);
+                } finally {
+                    // If redirection is happening, do not hide the loader here
+                    if (!window.location.href.includes(config.CLOUD_FUNCTION_AUTH_URL)) {
+                        hideGlobalLoader();
+                    }
+                }
+            }
+
+            function handleGoogleOAuthCallback() {
+                const urlParams = new URLSearchParams(window.location.search);
+                const authStatus = urlParams.get('auth_status');
+                const message = urlParams.get('message');
+                const isAuthCallback = urlParams.has('code') || urlParams.has('error') || urlParams.has('auth_status');
+
+                if (isAuthCallback) {
+                    console.log("DEBUG: Detected Google OAuth callback in URL. Status:", authStatus, "Message:", message);
+                    history.replaceState({}, document.title, window.location.pathname);
+
+                    if (authStatus === 'success') {
+                        showToast(i18nStrings.syncGoogleCalendarSuccess, 'success', 5000);
+                        // Refresh the profile view to show connected status and buttons
+                        // Aqui, recarregar a vista de Perfil será tratado pela chamada a `loadViewData`
+                        // que displayLongTermMemory() fará a partir dos dados do backend.
+                        // O importante é garantir que `currentUser` esteja disponível.
+                        if (currentUser && elements.longTermMemoryViewContent?.classList.contains('active')) {
+                             loadViewData('longTermMemory');
+                        }
+                    } else if (authStatus === 'error') {
+                        showToast(message || i18nStrings.connectGoogleCalendarError, 'error', 7000);
+                    }
+                }
+            }
+
+            async function handleSyncGoogleCalendar() {
+                console.log("DEBUG: handleSyncGoogleCalendar called.");
+                if (!currentUser) { showToast(i18nStrings.unauthenticated, 'error'); return; }
+
+                showGlobalLoader();
+                try {
+                    // Send request with direct action type and data for period
+                    const today = new Date();
+                    const next7Days = new Date();
+                    next7Days.setDate(today.getDate() + 7);
+
+                    const payload = {
+                        user_id: currentUser.uid,
+                        request_type: 'google_calendar_action', // Direct action type
+                        action: 'sync_calendar',
+                        data: {
+                            start_date: today.toISOString().split('T')[0], // YYYY-MM-DD
+                            end_date: next7Days.toISOString().split('T')[0] // YYYY-MM-DD
+                        }
+                    };
+                    const response = await callBackendAPI(payload);
+
+                    if (response?.status === 'success') {
+                        showToast(response.response || i18nStrings.syncGoogleCalendarSuccess, 'success');
+                        if (response.html_view_data?.agenda) {
+                            displayAgenda(response.html_view_data.agenda);
+                        }
+                    } else if (response?.status === 'info' && response.message.includes("conectar sua conta")) {
+                        showToast(response.response, 'info', 5000);
+                        // Potentially trigger connect flow if not connected
+                    } else {
+                        showToast(response?.response || i18nStrings.syncGoogleCalendarError, 'error');
+                    }
+                } catch (error) {
+                    showToast(i18nStrings.syncGoogleCalendarError + " " + error.message, 'error');
+                    console.error("DEBUG: Error in handleSyncGoogleCalendar:", error);
+                } finally {
+                    hideGlobalLoader();
+                }
+            }
+
+            async function handleDisconnectGoogleCalendar() {
+                console.log("DEBUG: handleDisconnectGoogleCalendar called.");
+                if (!currentUser) { showToast(i18nStrings.unauthenticated, 'error'); return; }
+
+                showConfirmationModal(i18nStrings.disconnectGoogleCalendarConfirm, async () => {
+                    showGlobalLoader();
+                    try {
+                        // Send request with direct action type
+                        const payload = {
+                            user_id: currentUser.uid,
+                            request_type: 'google_calendar_action', // Direct action type
+                            action: 'disconnect_calendar'
+                        };
+                        const response = await callBackendAPI(payload);
+                        if (response?.status === 'success') {
+                            showToast(response.response || i18nStrings.disconnectGoogleCalendarSuccess, 'success');
+                            loadViewData('longTermMemory'); // Reload profile to update status/buttons
+                        } else {
+                            showToast(response?.response || i18nStrings.disconnectGoogleCalendarError, 'error');
+                        }
+                    } catch (error) {
+                        showToast(i18nStrings.disconnectGoogleCalendarError + " " + error.message, 'error');
+                        console.error("DEBUG: Error in handleDisconnectGoogleCalendar:", error);
+                    } finally {
+                        hideGlobalLoader();
+                    }
+                });
+            }
+
+            // Handlers para Projetos
+            async function handleEditProject(projectId) {
+                console.log("DEBUG: handleEditProject called for project:", projectId);
+                if (!currentUser) { showToast(i18nStrings.unauthenticated, 'error'); return; }
+                
+                currentEditProjectId = projectId;
+                const project = await getProjectById(projectId);
+                if (!project) {
+                    showToast("Projeto não encontrado.", 'error');
+                    return;
+                }
+                
+                // Preencher modal de criação/edição de projeto com dados existentes
+                if (elements.projectNameInput) elements.projectNameInput.value = project.name || '';
+                if (elements.projectDescriptionTextarea) elements.projectDescriptionTextarea.value = project.description || '';
+                if (elements.projectDeadlineInput) elements.projectDeadlineInput.value = project.deadline || '';
+                if (elements.projectStatusSelect) elements.projectStatusSelect.value = project.status || 'planning';
+                
+                // Abrir modal
+                if (elements.createProjectModal) elements.createProjectModal.style.display = 'flex';
+            }
+
+            async function handleDeleteProject(projectId) {
+                console.log("DEBUG: handleDeleteProject called for project:", projectId);
+                if (!currentUser) { showToast(i18nStrings.unauthenticated, 'error'); return; }
+                
+                showConfirmationModal("Tem certeza que deseja excluir este projeto?", async () => {
+                    await sendCrudRequest('project', 'delete', projectId);
+                });
+            }
+
+            async function handleToggleMicrotask(projectId, microtaskIndex) {
+                console.log("DEBUG: handleToggleMicrotask called for project:", projectId, "microtask:", microtaskIndex);
+                if (!currentUser) { showToast(i18nStrings.unauthenticated, 'error'); return; }
+                
+                const project = await getProjectById(projectId);
+                if (!project || !project.micro_tasks || !project.micro_tasks[microtaskIndex]) {
+                    showToast("Microtarefa não encontrada.", 'error');
+                    return;
+                }
+                
+                // Toggle completed status
+                project.micro_tasks[microtaskIndex].completed = !project.micro_tasks[microtaskIndex].completed;
+                
+                // Update project with new microtasks
+                await sendCrudRequest('project', 'update', projectId, {
+                    micro_tasks: project.micro_tasks
+                });
+            }
+
+            async function getProjectById(projectId) {
+                const payload = {
+                    user_id: currentUser.uid,
+                    request_type: 'chat_and_view',
+                    view_request: 'projetos'
+                };
+                const response = await callBackendAPI(payload);
+                if (response?.status === 'success' && response.html_view_data?.projetos) {
+                    return response.html_view_data.projetos.find(p => p.id === projectId);
+                }
+                return null;
+            }
+
+            // Handlers para Rotinas
+            async function handleApplyRoutine(routineId, date) {
+                console.log("DEBUG: handleApplyRoutine called for routine:", routineId, "date:", date);
+                if (!currentUser) { showToast(i18nStrings.unauthenticated, 'error'); return; }
+                
+                showGlobalLoader();
+                try {
+                    const payload = {
+                        user_id: currentUser.uid,
+                        request_type: 'crud_action',
+                        item_type: 'routine',
+                        action: 'apply_to_day',
+                        item_id: routineId,
+                        data: { date: date || new Date().toISOString().split('T')[0] }
+                    };
+                    const response = await callBackendAPI(payload);
+                    if (response?.status === 'success') {
+                        showToast(i18nStrings.routineApplied, 'success');
+                        if (response.html_view_data?.agenda) {
+                            displayAgenda(response.html_view_data.agenda);
+                        }
+                    } else {
+                        showToast(response?.message || "Erro ao aplicar rotina.", 'error');
+                    }
+                } catch (error) {
+                    showToast("Erro ao aplicar rotina: " + error.message, 'error');
+                    console.error("DEBUG: Error in handleApplyRoutine:", error);
+                } finally {
+                    hideGlobalLoader();
+                }
+            }
+
+            async function handleDeleteRoutine(routineId) {
+                console.log("DEBUG: handleDeleteRoutine called for routine:", routineId);
+                if (!currentUser) { showToast(i18nStrings.unauthenticated, 'error'); return; }
+                
+                showConfirmationModal(i18nStrings.confirmDeleteRoutine, async () => {
+                    await sendCrudRequest('routine', 'delete', routineId);
+                });
+            }
+
+            // Handlers para Sugestões
+            async function handleAcceptSuggestion(suggestionId, suggestionType, suggestionData) {
+                console.log("DEBUG: handleAcceptSuggestion called:", suggestionId, suggestionType, suggestionData);
+                if (!currentUser) { showToast(i18nStrings.unauthenticated, 'error'); return; }
+                
+                showGlobalLoader();
+                try {
+                    // Create task or project based on suggestion
+                    if (suggestionType === 'task' || suggestionType === 'tarefa') {
+                        await sendCrudRequest('task', 'create', null, suggestionData);
+                    } else if (suggestionType === 'project' || suggestionType === 'projeto') {
+                        await sendCrudRequest('project', 'create', null, suggestionData);
+                    }
+                    showToast(i18nStrings.suggestionAccepted, 'success');
+                } catch (error) {
+                    showToast("Erro ao aceitar sugestão: " + error.message, 'error');
+                    console.error("DEBUG: Error in handleAcceptSuggestion:", error);
+                } finally {
+                    hideGlobalLoader();
+                }
+            }
+
+            async function handleRejectSuggestion(suggestionId) {
+                console.log("DEBUG: handleRejectSuggestion called:", suggestionId);
+                showToast(i18nStrings.suggestionRejected, 'info');
+                // Optionally, could send feedback to backend about rejected suggestion
+            }
+
+            function setupAuth() {
+                console.log("DEBUG: setupAuth started. Setting up onAuthStateChanged listener.");
+                const authSection = elements.authSection;
+                const mainContentArea = elements.mainContentArea;
+                const sidebarMenu = elements.sidebarMenu;
+                const eixaIconFab = elements.eixaIconFab; 
+
+                // Verificação de elementos essenciais estáticos
+                if (!authSection || !mainContentArea || !sidebarMenu || !eixaIconFab) {
+                    console.error("DEBUG: CRITICAL ERROR: Essential static DOM elements (authSection, mainContentArea, sidebarMenu, eixaIconFab) not found during setupAuth. Check HTML IDs.");
+                    showToast("Erro ao iniciar a aplicação: Elementos de interface essenciais não encontrados.", 'error', 15000);
+                    return;
+                }
+
+                firebase.auth().onAuthStateChanged(user => {
+                    console.log("DEBUG: onAuthStateChanged callback fired. User object:", user);
+                    hideGlobalLoader(); // Esconde o loader global após o Firebase responder
+
+                    const isMobile = window.innerWidth <= 768;
+                    if (isMobile) {
+                        document.body.classList.toggle('auth-active', !user);
+                    }
+
+                    if (user) {
+                        console.log("DEBUG: User is LOGGED IN. Displaying main app UI.");
+                        currentUser = user;
+                        displayAuthError(''); 
+
+                        // Esconde tela de autenticação
+                        authSection.classList.remove('active'); 
+                        // Mostra elementos principais da UI
+                        mainContentArea.style.display = 'flex'; 
+                        sidebarMenu.style.display = 'flex'; 
+                        eixaIconFab.style.display = 'flex'; 
+
+                        // Monta a UI principal do aplicativo (chat, agenda, etc.)
+                        initializeAppUIAndDisplay(); 
+                        // Inicia o relógio
+                        updateClockDisplay();
+                    } else {
+                        console.log("DEBUG: User is NOT authenticated. Showing auth screen.");
+                        currentUser = null;
+
+                        // Esconde elementos principais da UI
+                        mainContentArea.style.display = 'none'; 
+                        sidebarMenu.style.display = 'none'; 
+                        eixaIconFab.style.display = 'none'; 
+                        // Mostra tela de autenticação
+                        authSection.classList.add('active'); 
+
+                        // Limpa o conteúdo da mainContentArea (para um estado limpo no próximo login)
+                        mainContentArea.innerHTML = ''; 
+
+                        // Limpa as referências dos elementos dinâmicos do objeto `elements`
+                        // para evitar que referências antigas sejam mantidas
+                        Object.assign(elements, {
+                            chatViewContent: null, chatDisplay: null, messageInput: null, sendMessageBtn: null,
+                            fileInput: null, fileUploadBtn: null, attachmentIcon: null, attachmentClearIcon: null,
+                            attachmentInfoDiv: null, fileNameDisplay: null, loadingIndicator: null, chatAiThinkingSrOnly: null,
+                            suggestedTasksContainer: null, suggestedTasksList: null, suggestedProjectsContainer: null,
+                            suggestedProjectsCards: null, suggestedTasksTitleSpan: null, suggestedProjectsTitleSpan: null,
+                            confirmationArea: null, confirmationText: null, confirmYesBtnChat: null, confirmNoBtnChat: null,
+                            agendaViewContent: null, agendaDisplay: null, openAddTaskModalBtn: null, 
+                            openAddRoutineModalBtn: null, syncGoogleCalendarBtnAgenda: null, 
+                            rotinasTemplatesViewContent: null, rotinasDisplay: null, openAddRoutineModalBtnSecondary: null, 
+                            projetosViewContent: null, projetosDisplay: null, openAddProjectModalBtn: null, 
+                            emotionalMemoriesViewContent: null, emotionalMemoriesDisplay: null,
+                            diagnosticoViewContent: null, diagnosticoDisplay: null,
+                            longTermMemoryViewContent: null, longTermMemoryDisplay: null,
+                            viewContents: null, 
+                            inputWrapper: null,
+                            // Note: Google Calendar/Mobile settings buttons are handled dynamically within displayLongTermMemory's scope
+                            // So, they are not global `elements.ID_OF_BUTTON` properties, and don't need clearing here.
+                        });
+
+                        // Para o relógio
+                        if (window.clockInterval) {
+                            clearInterval(window.clockInterval);
+                            window.clockInterval = null;
+                        }
+                        if (elements.currentDateTimeDisplay) {
+                            elements.currentDateTimeDisplay.textContent = '';
+                        }
+                    }
+                });
+                console.log("DEBUG: setupAuth finished. Listener registered.");
+            }
+
+            initializeApp();
+        });
+    </script>
+</body>
+</html>
