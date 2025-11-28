@@ -8,37 +8,40 @@
     <style>
         /* Variáveis CSS (Custom Properties) */
         :root {
-            /* Modo Claro */
-            --bg-primary: hsl(0, 0%, 100%); /* Fundo principal, cards, sidebar */
-            --bg-secondary: hsl(240, 20%, 98%); /* Fundo geral da página, inputs */
-            --bg-tertiary: hsl(240, 15%, 95%); /* Elementos de destaque suave, hover */
-            --bg-card: hsl(0, 0%, 100%); /* Fundo de cards */
+            /* Modo Claro - Premium EIXA Palette */
+            --bg-primary: #FFFFFF; /* Fundo principal, cards, sidebar */
+            --bg-secondary: #F8FAFC; /* Fundo geral da página, inputs */
+            --bg-tertiary: #F1F5F9; /* Elementos de destaque suave, hover */
+            --bg-card: #FFFFFF; /* Fundo de cards */
+            --bg-hover: rgba(124, 58, 237, 0.05); /* Hover state */
             
-            /* Acento principal: lavanda pastel suave */
-            --primary-accent: hsl(255, 75%, 70%); /* Mais vibrante */
-            --primary-accent-light: hsl(255, 85%, 96%); /* Para gradientes e fundos claros */
-            --primary-accent-darker: hsl(255, 65%, 60%); /* Versão mais escura para hover/active */
+            /* Acento principal: Violeta Premium */
+            --primary-accent: #7C3AED; /* Violeta Vibrante */
+            --primary-accent-light: #DDD6FE; /* Lavanda Suave */
+            --primary-accent-lighter: #F5F3FF; /* Lavanda Ultra Suave */
+            --primary-accent-darker: #4C1D95; /* Roxo Profundo */
             
-            --text-primary: hsl(240, 10%, 15%); /* Texto principal */
-            --text-secondary: hsl(240, 8%, 40%); /* Texto secundário, ícones */
-            --text-placeholder: hsl(240, 6%, 60%); /* Placeholder de input */
+            --text-primary: #1E293B; /* Texto principal */
+            --text-secondary: #64748B; /* Texto secundário, ícones */
+            --text-placeholder: #94A3B8; /* Placeholder de input */
             
-            --border-color: hsl(240, 10%, 90%); /* Cor da borda padrão */
+            --border-color: #E2E8F0; /* Cor da borda padrão */
             
-            --user-bubble-bg: var(--primary-accent-light); /* Balão de chat do usuário (lavanda muito clara) */
-            --ai-bubble-bg: hsl(0, 0%, 100%); /* Balão de chat da IA (branco puro) */
+            --user-bubble-bg: var(--primary-accent-light); /* Balão de chat do usuário */
+            --ai-bubble-bg: #FFFFFF; /* Balão de chat da IA */
             
             /* Cores de status */
-            --success-green: hsl(145, 63%, 42%);
-            --error-red: hsl(0, 82%, 63%);
-            --warning-orange: hsl(39, 92%, 58%);
-            --info-blue: hsl(210, 79%, 65%);
+            --success-green: #10B981;
+            --error-red: #EF4444;
+            --warning-orange: #F59E0B;
+            --info-blue: #3B82F6;
             
-            /* Sombras e transições */
-            --shadow-subtle: 0 1px 3px rgba(0,0,0,0.03); /* Sombra mais leve */
-            --shadow-medium: 0 4px 12px rgba(100,100,150,0.08); /* Sombra média, mais difusa */
-            --shadow-strong: 0 8px 20px rgba(100,100,150,0.12); /* Sombra forte, para elementos elevados */
-            --transition-speed: 0.3s; /* Velocidade de transição padrão */
+            /* Sombras Premium */
+            --shadow-subtle: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow-medium: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            --shadow-strong: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+            --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+            --transition-speed: 0.2s; /* Velocidade de transição padrão */
             
             /* Tipografia - Adjusted to favor Inter/Space Grotesk for body and Roboto/Poppins for headings */
             --font-heading: 'Roboto', 'Poppins', sans-serif; /* Roboto for headings */
@@ -617,19 +620,29 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: var(--spacing-md) var(--spacing-lg);
+            padding: 32px 40px;
             border-bottom: 1px solid var(--border-color);
             flex-shrink: 0;
-            background-color: var(--bg-primary);
+            background: rgba(255,255,255,0.8);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            position: sticky;
+            top: 0;
+            z-index: 10;
         }
         .view-content-title {
-            font-family: var(--font-heading);
-            font-size: 1.8em;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 28px;
+            font-weight: 700;
             color: var(--text-primary);
-            margin: 0;
-            text-shadow: 0 0 5px color-mix(in srgb, var(--eixa-glow-color) 40%, transparent), 
-                                0 0 10px color-mix(in srgb, var(--eixa-glow-color) 20%, transparent);
-            animation: textGlowPulse 3s ease-in-out infinite alternate;
+            margin: 0 0 4px 0;
+            letter-spacing: -0.5px;
+        }
+        
+        .view-subtitle {
+            color: var(--text-secondary);
+            font-size: 14px;
+            font-weight: 400;
         }
 
         @keyframes textGlowPulse {
@@ -923,22 +936,23 @@
         /* Blocos de Tarefas/Eventos (agora posicionados absolutamente) */
         .agenda-event-block {
             position: absolute;
-            left: 60px; 
-            width: calc(100% - 60px); 
-            background-color: var(--eixa-task-bg);
-            border-left: 4px solid var(--eixa-task-color);
-            border-radius: var(--border-radius-sm);
-            padding: var(--spacing-xs) var(--spacing-sm);
+            left: 70px; 
+            right: 20px;
+            background-color: var(--primary-accent-lighter);
+            border-left: 4px solid var(--primary-accent);
+            border-radius: 12px;
+            padding: 12px 16px;
             color: var(--text-primary);
-            font-size: 0.9em;
+            font-size: 14px;
             overflow: hidden; 
             display: flex;
             flex-direction: column;
-            gap: 2px;
+            gap: 4px;
             justify-content: center;
             box-shadow: var(--shadow-subtle);
             cursor: pointer;
-            z-index: 5; 
+            z-index: 5;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         }
         .agenda-event-block:hover {
             box-shadow: var(--shadow-medium);
@@ -946,20 +960,38 @@
             z-index: 11; 
         }
         .agenda-event-block.task-completed {
-            opacity: 0.7;
+            opacity: 0.6;
             border-left-color: var(--success-green);
-            text-decoration: line-through;
+        }
+        
+        .agenda-event-block .event-time {
+            font-weight: 500;
+            font-size: 12px;
+            color: var(--text-secondary);
+            opacity: 0.8;
+        }
+        
+        .agenda-event-block .event-description {
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--text-primary);
+            line-height: 1.4;
         }
 
-        /* Cores e Ícones por Origem */
+        /* Cores e Ícones por Origem - Premium Style */
         .agenda-event-block.origin-google_calendar {
-            background-color: var(--google-calendar-event-bg);
-            border-left-color: var(--google-calendar-event-color);
+            background-color: #EFF6FF;
+            border-left-color: var(--info-blue);
         }
-        .agenda-event-block.origin-routine { 
-            background-color: var(--routine-task-bg);
-            border-left-color: var(--routine-task-color);
+        .agenda-event-block.origin-routine_applied { 
+            background-color: #ECFDF5;
+            border-left-color: #059669;
         }
+        .agenda-event-block.origin-user_added {
+            background-color: var(--primary-accent-lighter);
+            border-left-color: var(--primary-accent);
+        }
+        
         .agenda-event-block .event-icons {
             position: absolute;
             top: var(--spacing-xs);
@@ -974,19 +1006,21 @@
             color: var(--text-secondary);
         }
         
-        /* Badges de origem das tarefas */
+        /* Badges de origem das tarefas - Premium Style */
         .event-badge {
             display: inline-flex;
             align-items: center;
-            gap: 3px;
-            padding: 2px 6px;
-            border-radius: 10px;
-            font-size: 0.7em;
+            gap: 4px;
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-size: 10px;
             font-weight: 700;
             white-space: nowrap;
             transition: all 0.2s ease;
             text-transform: uppercase;
-            letter-spacing: 0.3px;
+            letter-spacing: 0.5px;
+            background: rgba(255,255,255,0.5);
+            backdrop-filter: blur(4px);
         }
         
         .event-badge .material-icons {
@@ -994,24 +1028,15 @@
         }
         
         .badge-eixa {
-            background: linear-gradient(135deg, var(--eixa-task-bg), color-mix(in srgb, var(--eixa-task-bg) 80%, white));
-            color: var(--eixa-task-color);
-            border: 1px solid var(--eixa-task-color);
-            box-shadow: 0 2px 4px rgba(208,176,255,0.2);
+            color: var(--primary-accent-darker);
         }
         
         .badge-google {
-            background: linear-gradient(135deg, var(--google-calendar-event-bg), color-mix(in srgb, var(--google-calendar-event-bg) 80%, white));
-            color: var(--google-calendar-event-color);
-            border: 1px solid var(--google-calendar-event-color);
-            box-shadow: 0 2px 4px rgba(66,133,244,0.2);
+            color: #1E3A8A;
         }
         
         .badge-routine {
-            background: linear-gradient(135deg, var(--routine-task-bg), color-mix(in srgb, var(--routine-task-bg) 80%, white));
-            color: var(--routine-task-color);
-            border: 1px solid var(--routine-task-color);
-            box-shadow: 0 2px 4px rgba(52,168,83,0.2);
+            color: #064E3B;
         }
         
         .completion-icon {
