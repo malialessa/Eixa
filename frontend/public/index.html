@@ -1,0 +1,3728 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EIXA</title>
+    
+        /* [COLE TODO O CSS DO ARQUIVO ORIGINAL AQUI] */
+        <style>
+        :root {
+            /* Modo Claro */
+            --bg-primary: hsl(0, 0%, 100%); /* Fundo principal, cards, sidebar */
+            --bg-secondary: hsl(240, 20%, 98%); /* Fundo geral da página, inputs */
+            --bg-tertiary: hsl(240, 15%, 95%); /* Elementos de destaque suave, hover */
+            --bg-card: hsl(0, 0%, 100%); /* Fundo de cards */
+            
+            /* Acento principal: lavanda pastel suave */
+            --primary-accent: hsl(255, 75%, 70%); /* Mais vibrante */
+            --primary-accent-light: hsl(255, 85%, 96%); /* Para gradientes e fundos claros */
+            --primary-accent-darker: hsl(255, 65%, 60%); /* Versão mais escura para hover/active */
+            
+            --text-primary: hsl(240, 10%, 15%); /* Texto principal */
+            --text-secondary: hsl(240, 8%, 40%); /* Texto secundário, ícones */
+            --text-placeholder: hsl(240, 6%, 60%); /* Placeholder de input */
+            
+            --border-color: hsl(240, 10%, 90%); /* Cor da borda padrão */
+            
+            --user-bubble-bg: var(--primary-accent-light); /* Balão de chat do usuário (lavanda muito clara) */
+            --ai-bubble-bg: hsl(0, 0%, 100%); /* Balão de chat da IA (branco puro) */
+            
+            /* Cores de status */
+            --success-green: hsl(145, 63%, 42%);
+            --error-red: hsl(0, 82%, 63%);
+            --warning-orange: hsl(39, 92%, 58%);
+            --info-blue: hsl(210, 79%, 65%);
+            
+            /* Sombras e transições */
+            --shadow-subtle: 0 1px 3px rgba(0,0,0,0.03); /* Sombra mais leve */
+            --shadow-medium: 0 4px 12px rgba(100,100,150,0.08); /* Sombra média, mais difusa */
+            --shadow-strong: 0 8px 20px rgba(100,100,150,0.12); /* Sombra forte, para elementos elevados */
+            --transition-speed: 0.3s; /* Velocidade de transição padrão */
+            
+            /* Tipografia - Adjusted to favor Inter/Space Grotesk for body and Roboto/Poppins for headings */
+            --font-heading: 'Roboto', 'Poppins', sans-serif; /* Roboto for headings */
+            --font-body: 'Inter', 'Space Grotesk', sans-serif; /* Inter, Space Grotesk for body text - modern and cozy */
+            --font-size-base: 16px;
+            
+            /* Espaçamento e Bordas - Increased for better UX */
+            --spacing-xs: 4px; 
+            --spacing-sm: 8px; 
+            --spacing-md: 16px; 
+            --spacing-lg: 24px; 
+            --spacing-xl: 32px; 
+            --spacing-xxl: 48px; /* New larger spacing */
+
+            --border-radius-sm: 8px; 
+            --border-radius-md: 12px; 
+            --border-radius-lg: 16px; 
+            --border-radius-xl: 24px;
+
+            /* Novas cores para botões de provedores externos */
+            --google-blue: #4285F4;
+            --google-blue-dark: #357AE8;
+            --google-text: #111; /* Para texto em botões Google em light mode */
+
+            /* NOVAS CORES ESPECÍFICAS DA EIXA (sugeridas para paleta cintilante) */
+            --eixa-lavender-accent: #D0B0FF; /* Lilás luminoso para acentos */
+            --eixa-dark-purple: #2F005B; /* Roxo escuro para elementos de destaque */
+            --eixa-glow-color: rgba(208,176,255,1); /* Cor base para o brilho cintilante */
+
+            /* NOVAS CORES PARA EVENTOS DA AGENDA */
+            --eixa-task-color: var(--primary-accent); /* Tarefas criadas na EIXA */
+            --eixa-task-bg: var(--primary-accent-light); 
+            --google-calendar-event-color: var(--google-blue); /* Eventos do Google Calendar */
+            --google-calendar-event-bg: color-mix(in srgb, var(--google-blue) 10%, transparent);
+            --routine-task-color: var(--success-green); /* Tarefas de rotina */
+            --routine-task-bg: color-mix(in srgb, var(--success-green) 10%, transparent);
+        }
+
+        /* Dark Mode */
+        body.dark-mode {
+            --bg-primary: hsl(240, 8%, 12%);
+            --bg-secondary: hsl(240, 8%, 8%);
+            --bg-tertiary: hsl(240, 8%, 18%);
+            --bg-card: hsl(240, 8%, 15%);
+            
+            --primary-accent: hsl(255, 60%, 75%); /* Ligeiramente mais claro para contraste */
+            --primary-accent-light: hsl(255, 15%, 25%); /* Para gradientes e fundos claros */
+            --primary-accent-darker: hsl(255, 50%, 65%);
+            
+            --text-primary: hsl(240, 10%, 95%);
+            --text-secondary: hsl(240, 5%, 60%); /* Mais claro para legibilidade */
+            --text-placeholder: hsl(240, 5%, 45%);
+            
+            --border-color: hsl(240, 5%, 25%);
+            
+            --user-bubble-bg: var(--primary-accent-light); /* Lavanda escura sutil */
+            --ai-bubble-bg: hsl(240, 8%, 18%); /* Fundo da IA mais escuro */
+            
+            /* Dark Mode para botões externos */
+            --google-blue: #4285F4; /* Mantém a cor base do Google */
+            --google-blue-dark: #357AE8;
+            --google-text: hsl(240, 10%, 95%); /* Texto mais claro para dark mode */
+
+            /* NOVAS CORES ESPECÍFICAS DA EIXA (sugeridas) - Manter consistentes */
+            --eixa-lavender-accent: #D0B0FF;
+            --eixa-dark-purple: #2F005B;
+            --eixa-glow-color: rgba(208,176,255,1); /* Cor base para o brilho cintilante */
+
+            /* NOVAS CORES PARA EVENTOS DA AGENDA (Dark Mode) */
+            --eixa-task-color: var(--primary-accent);
+            --eixa-task-bg: color-mix(in srgb, var(--primary-accent) 15%, transparent);
+            --google-calendar-event-color: var(--google-blue);
+            --google-calendar-event-bg: color-mix(in srgb, var(--google-blue) 15%, transparent);
+            --routine-task-color: var(--success-green);
+            --routine-task-bg: color-mix(in srgb, var(--success-green) 15%, transparent);
+        }
+
+        /* 2. BASE E LAYOUT GERAL ======================================== */
+        * { 
+            box-sizing: border-box; 
+            transition: background-color var(--transition-speed) ease, color var(--transition-speed) ease, 
+                        border-color var(--transition-speed) ease, box-shadow var(--transition-speed) ease,
+                        transform var(--transition-speed) ease, opacity var(--transition-speed) ease,
+                        text-shadow var(--transition-speed) ease, filter var(--transition-speed) ease,
+                        width var(--transition-speed) ease, height var(--transition-speed) ease, top var(--transition-speed) ease, left var(--transition-speed) ease; /* Adicionado 'height', 'top', 'left' para transição de blocos da agenda */
+        }
+
+        html, body {
+            height: 100%; 
+            min-height: 100vh;
+            margin: 0;
+            font-family: var(--font-body);
+            font-size: var(--font-size-base);
+            line-height: 1.7;
+            color: var(--text-primary);
+            background-color: var(--bg-secondary);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            overflow-y: auto;
+            overflow-x: hidden;
+            background-image: linear-gradient(to bottom, 
+                color-mix(in srgb, var(--primary-accent-light) 10%, transparent) 0%, 
+                transparent 50%, 
+                color-mix(in srgb, var(--primary-accent-light) 5%, transparent) 100%
+            );
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+        }
+
+        body.dark-mode {
+            background-image: linear-gradient(to bottom, 
+                color-mix(in srgb, var(--primary-accent-light) 5%, transparent) 0%, 
+                transparent 50%, 
+                color-mix(in srgb, var(--primary-accent-light) 2%, transparent) 100%
+            );
+        }
+
+        .global-loader {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: var(--bg-primary);
+            z-index: 10000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            opacity: 1;
+            visibility: visible;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+        .global-loader.hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        @keyframes fillPulse {
+            0% { filter: brightness(0.5) saturate(0.8) drop-shadow(0 0 5px var(--eixa-glow-color)); transform: scale(0.95); }
+            50% { filter: brightness(1.5) saturate(1.2) drop-shadow(0 0 15px var(--eixa-glow-color)); transform: scale(1.05); }
+            100% { filter: brightness(0.5) saturate(0.8) drop-shadow(0 0 5px var(--eixa-glow-color)); transform: scale(0.95); }
+        }
+
+        #loader-eixa {
+            width: 64px;
+            height: 64px;
+            animation: fillPulse 2.5s ease-in-out infinite;
+        }
+
+        .app-container {
+            display: flex;
+            flex-direction: row;
+            width: 100vw; height: 100vh;
+            max-width: 1800px;
+            margin: 0 auto;
+            background-color: var(--bg-primary);
+            overflow: hidden;
+            transition: background-color var(--transition-speed) ease;
+            border-radius: var(--border-radius-xl);
+            box-shadow: var(--shadow-strong);
+        }
+
+        .hidden-input { display: none; }
+
+        .material-icons {
+            font-size: 24px;
+            color: var(--text-secondary);
+            vertical-align: middle;
+            transition: color var(--transition-speed) ease;
+        }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border-width: 0;
+        }
+
+        .header-eixa {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: var(--spacing-xs);
+            margin-top: var(--spacing-xl);
+            width: fit-content;
+            margin-left: auto;
+            margin-right: auto;
+            padding: 0;
+        }
+        .header-eixa img {
+            height: 40px;
+            width: 40px;
+            object-fit: contain;
+            filter: drop-shadow(0 0 5px var(--eixa-glow-color));
+            transition: filter 0.3s ease;
+        }
+        .header-eixa span {
+            font-family: var(--font-body);
+            font-size: 20px; 
+            font-weight: 600;
+            color: var(--eixa-lavender-accent);
+            letter-spacing: -0.05em;
+            transition: opacity 0.3s ease;
+        }
+
+        .app-subtitle {
+            font-family: var(--font-body);
+            font-size: 0.9em;
+            color: var(--text-secondary);
+            margin-top: var(--spacing-xs);
+        }
+
+        .auth-section {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            width: 100%; height: 100%;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: var(--spacing-lg);
+            background-color: #0A0A0A;
+            background-image: none;
+            z-index: 9999;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.5s ease, visibility 0.5s ease;
+        }
+        .auth-section.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        .auth-card {
+            background-color: var(--bg-primary);
+            padding: var(--spacing-xxl) var(--spacing-xl);
+            border-radius: var(--border-radius-xl);
+            box-shadow: var(--shadow-strong);
+            border: 1px solid var(--border-color);
+            max-width: 450px;
+            width: 100%;
+            text-align: center;
+            animation: fadeIn 0.5s ease-in-out;
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-lg);
+        }
+        .auth-header {
+            margin-bottom: var(--spacing-md);
+        }
+        .auth-card-title {
+            font-family: var(--font-heading);
+            font-size: 1.8em;
+            color: var(--text-primary);
+            margin: var(--spacing-md) 0 var(--spacing-sm) 0;
+            font-weight: 700;
+            text-shadow: 0 0 5px color-mix(in srgb, var(--eixa-lavender-accent) 30%, transparent);
+        }
+        .auth-card-subtitle {
+            font-family: var(--font-body);
+            font-size: 1em;
+            color: hsl(240, 8%, 40%);
+            font-weight: 400;
+            margin-bottom: var(--spacing-lg);
+            line-height: 1.5;
+        }
+        .auth-welcome { display: none; }
+
+        .auth-section .header-eixa {
+            padding: 0;
+            justify-content: center;
+            margin-bottom: var(--spacing-lg);
+            gap: var(--spacing-md);
+        }
+
+        .auth-section .header-eixa img {
+            height: 48px;
+            filter: drop-shadow(0 0 8px var(--eixa-glow-color));
+            animation: logoPulse 3s ease-in-out infinite; 
+        }
+        @keyframes logoPulse {
+            0%, 100% { transform: scale(1); opacity: 0.9; }
+            50% { transform: scale(1.05); opacity: 1; }
+        }
+
+        .auth-section .header-eixa span {
+            font-size: 28px;
+        }
+
+        #manualAuthContainer {
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-md);
+            width: 100%;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: var(--spacing-xs);
+            width: 100%;
+        }
+
+        .input-group input[type="email"],
+        .input-group input[type="password"] {
+            width: 100%;
+            padding: var(--spacing-md);
+            border: 1px solid var(--border-color);
+            background-color: var(--bg-secondary);
+            border-radius: var(--border-radius-md);
+            color: var(--text-primary);
+            font-family: var(--font-body);
+            font-size: 1em;
+        }
+        .input-group input::placeholder {
+            color: var(--text-placeholder);
+        }
+
+        .input-group input[type="email"]:focus,
+        .input-group input[type="password"]:focus {
+            outline: none;
+            border-color: var(--primary-accent);
+            box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary-accent) 25%, transparent), inset 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .auth-buttons-group {
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-md);
+            margin-top: var(--spacing-md);
+        }
+        .auth-button {
+            width: 100%;
+            padding: var(--spacing-md) var(--spacing-lg);
+            font-family: var(--font-body);
+            font-weight: 600;
+            font-size: 1rem;
+            border-radius: var(--border-radius-md);
+            cursor: pointer;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--spacing-sm);
+            box-shadow: var(--shadow-subtle);
+        }
+
+        .auth-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .auth-button.button-primary { 
+            background: linear-gradient(45deg, var(--primary-accent), var(--primary-accent-darker));
+            color: white;
+            border: none;
+            box-shadow: var(--shadow-medium);
+        }
+        .auth-button.button-primary:hover:not(:disabled) {
+            background: linear-gradient(45deg, var(--primary-accent-darker), var(--primary-accent));
+            box-shadow: var(--shadow-strong);
+            transform: translateY(-2px);
+        }
+
+        .auth-button.button-secondary { 
+            background-color: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+        .auth-button.button-secondary:hover:not(:disabled) {
+            background-color: var(--bg-tertiary);
+            border-color: var(--primary-accent);
+            box-shadow: var(--shadow-medium);
+            transform: translateY(-2px);
+        }
+
+        .auth-button.google-button {
+            background-color: white;
+            color: var(--google-text); /* Use new variable for text color */
+            padding: 12px 16px;
+            border: 1px solid var(--border-color);
+        }
+        /* Dark mode specific for google button */
+        body.dark-mode .auth-button.google-button {
+            background-color: hsl(240, 8%, 25%); /* More grey in dark mode */
+            border-color: var(--border-color);
+            color: var(--google-text);
+        }
+
+        .auth-button.google-button:hover:not(:disabled) {
+            background-color: var(--bg-tertiary);
+            box-shadow: var(--shadow-medium);
+            transform: translateY(-2px);
+        }
+
+        .auth-button.google-button .google-icon {
+            width: 20px;
+            height: 20px;
+            vertical-align: middle;
+        }
+
+        .divider {
+            display: flex;
+            align-items: center;
+            text-align: center;
+            font-size: 0.9em;
+            margin: var(--spacing-md) 0;
+            color: var(--text-secondary);
+        }
+
+        .divider::before,
+        .divider::after {
+            content: '';
+            flex: 1;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .divider:not(:empty)::before {
+            margin-right: var(--spacing-md);
+        }
+
+        .divider:not(:empty)::after {
+            margin-left: var(--spacing-md);
+        }
+
+        .error-message {
+            background-color: color-mix(in srgb, var(--error-red) 10%, transparent);
+            color: var(--error-red);
+            border: 1px solid var(--error-red);
+            padding: var(--spacing-sm) var(--spacing-md);
+            border-radius: var(--border-radius-sm);
+            font-size: 0.9em;
+            text-align: left;
+            margin-bottom: var(--spacing-md);
+            line-height: 1.4;
+            font-weight: 500;
+        }
+
+        /* 3. SIDEBAR (Navigation) ======================================== */
+        .sidebar-menu {
+            background-color: var(--bg-primary);
+            display: flex; flex-direction: column; flex-shrink: 0;
+            position: relative;
+            overflow-y: auto;
+        }
+        .sidebar-header { 
+            display: none;
+            position: relative;
+            padding-top: 0;
+        } 
+        .sidebar-top-section {
+            display: none;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            width: 100%;
+            margin-bottom: var(--spacing-md);
+        }
+
+        .sidebar-toggle-btn { 
+            position: absolute; 
+            top: var(--spacing-sm);
+            right: var(--spacing-sm);
+            margin-left: 0;
+            transform: none;
+            padding: var(--spacing-sm);
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .tabs-container {
+            display: flex; 
+            flex-direction: row;
+            justify-content: space-around;
+            padding: var(--spacing-sm) 0;
+            overflow-y: auto;
+        }
+        .tab-button {
+            display: flex; flex-direction: column; align-items: center;
+            gap: var(--spacing-xs);
+            padding: var(--spacing-sm);
+            border: none;
+            background-color: transparent;
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: var(--border-radius-md);
+            position: relative;
+        }
+        .tab-button:hover {
+            color: var(--text-primary);
+            background-color: var(--bg-tertiary);
+        }
+        .tab-button:hover .material-icons {
+            color: var(--primary-accent);
+        }
+
+        .tab-button.active {
+            color: var(--eixa-lavender-accent);
+            font-weight: 600;
+            background: linear-gradient(90deg, color-mix(in srgb, var(--eixa-lavender-accent) 5%, transparent) 0%, transparent 100%);
+            box-shadow: 0 0 5px color-mix(in srgb, var(--eixa-lavender-accent) 20%, transparent);
+        }
+        .tab-button.active .material-icons {
+            color: var(--eixa-lavender-accent);
+        }
+        .sidebar-footer { display: none; }
+
+        .current-datetime-display {
+            font-family: var(--font-body);
+            font-size: 0.85em;
+            color: var(--text-secondary);
+            margin-top: var(--spacing-sm);
+            text-align: center;
+        }
+
+        body.dark-mode .current-datetime-display {
+            color: var(--text-secondary);
+        }
+
+        .sidebar-menu.collapsed .current-datetime-display {
+            display: none;
+        }
+
+        /* 4. MAIN CONTENT AREA ================================== */
+        .main-content-area {
+            display: flex; flex-direction: column;
+            flex-grow: 1;
+            overflow: hidden;
+            position: relative;
+            order: 1;
+        }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .view-content {
+            display: none; flex-direction: column;
+            flex-grow: 1;
+            overflow: hidden;
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        .view-content.active {
+            display: flex;
+            opacity: 1;
+            transform: translateY(0);
+            animation: fadeIn 0.3s ease-out forwards; /* Adicionado para a transição de view */
+        }
+
+        .view-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: var(--spacing-md) var(--spacing-lg);
+            border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
+            background-color: var(--bg-primary);
+        }
+        .view-content-title {
+            font-family: var(--font-heading);
+            font-size: 1.8em;
+            color: var(--text-primary);
+            margin: 0;
+            text-shadow: 0 0 5px color-mix(in srgb, var(--eixa-glow-color) 40%, transparent), 
+                                0 0 10px color-mix(in srgb, var(--eixa-glow-color) 20%, transparent);
+            animation: textGlowPulse 3s ease-in-out infinite alternate;
+        }
+
+        @keyframes textGlowPulse {
+            0% { text-shadow: 0 0 4px color-mix(in srgb, var(--eixa-glow-color) 30%, transparent), 0 0 8px color-mix(in srgb, var(--eixa-glow-color) 15%, transparent); }
+            100% { text-shadow: 0 0 6px color-mix(in srgb, var(--eixa-glow-color) 60%, transparent), 0 0 12px color-mix(in srgb, var(--eixa-glow-color) 30%, transparent); }
+        }
+
+        .content-display-area {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: var(--spacing-xl);
+            background-color: var(--bg-secondary);
+        }
+        .view-intro {
+            padding: var(--spacing-md) var(--spacing-xl);
+            color: var(--text-secondary);
+            text-align: center;
+            font-size: 0.95em;
+            margin: 0;
+            flex-shrink: 0;
+            background-color: var(--bg-secondary);
+        }
+
+        /* 5. CHAT VIEW ================================================== */
+        .chat-display {
+            flex-grow: 1; overflow-y: auto;
+            padding: var(--spacing-xl);
+            display: flex; flex-direction: column;
+            gap: var(--spacing-md);
+        }
+        .message {
+            padding: var(--spacing-md);
+            border-radius: var(--border-radius-lg);
+            max-width: 90%;
+            word-wrap: break-word;
+            box-shadow: var(--shadow-subtle);
+            display: flex;
+            gap: var(--spacing-sm);
+            align-items: flex-start;
+        }
+        .message-content { line-height: 1.6; }
+        .message ul { padding-left: var(--spacing-lg); margin: var(--spacing-sm) 0; }
+        .message strong { color: var(--text-primary); font-weight: 600; }
+        .message h3 { font-family: var(--font-heading); margin: var(--spacing-md) 0 var(--spacing-sm) 0; font-size: 1.2em; }
+        .message h4 { font-family: var(--font-heading); margin: var(--spacing-md) 0 var(--spacing-sm) 0; font-size: 1.1em; }
+
+        .user-message {
+            align-self: flex-end;
+            background-color: var(--user-bubble-bg);
+            color: var(--primary-accent-darker);
+            border-bottom-right-radius: var(--spacing-md);
+        }
+        .ai-message {
+            align-self: flex-start;
+            background-color: var(--ai-bubble-bg);
+            border: 1px solid var(--border-color);
+            border-bottom-left-radius: var(--spacing-md);
+        }
+        
+        .ai-avatar {
+            background-color: var(--bg-tertiary);
+            border-radius: 50%;
+            width: 36px; height: 36px;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+            overflow: hidden;
+        }
+        .ai-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            animation: fillPulse 2.5s ease-in-out infinite;
+        }
+
+
+        .chat-input-area {
+            padding: var(--spacing-lg);
+            background-color: var(--bg-primary);
+            border-top: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+        .input-wrapper {
+            display: flex;
+            align-items: flex-end;
+            gap: var(--spacing-sm);
+            background-color: var(--bg-secondary);
+            border-radius: var(--border-radius-xl);
+            padding: var(--spacing-sm) var(--spacing-md);
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow-subtle);
+        }
+        .input-wrapper:focus-within {
+            outline: none;
+            border-color: var(--primary-accent);
+            box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary-accent) 25%, transparent), inset 0 1px 3px rgba(0,0,0,0.05);
+        }
+        textarea#messageInput {
+            flex-grow: 1; 
+            background: transparent; 
+            border: none;
+            color: var(--text-primary);
+            font-family: var(--font-body);
+            font-size: 1em; 
+            resize: none; 
+            outline: none;
+            max-height: 150px; 
+            overflow-y: auto;
+            padding: var(--spacing-xs) 0;
+            line-height: 1.5;
+        }
+        textarea#messageInput::placeholder { 
+            color: var(--text-placeholder); 
+            line-height: normal;
+            vertical-align: middle;
+        }
+
+        .attachment-info {
+            display: flex; align-items: center; gap: var(--spacing-sm);
+            background-color: var(--bg-tertiary);
+            padding: var(--spacing-xs) var(--spacing-sm);
+            border-radius: var(--border-radius-sm);
+            font-size: 0.85em;
+            animation: fadeIn 0.3s;
+        }
+        .attachment-clear-icon { cursor: pointer; color: var(--text-secondary); }
+        .attachment-clear-icon .material-icons { color: var(--text-secondary); }
+        .attachment-clear-icon:hover .material-icons { color: var(--primary-accent); }
+
+
+        .suggested-sections {
+            background-color: var(--bg-tertiary);
+            border-radius: var(--border-radius-lg);
+            padding: var(--spacing-md);
+            margin-bottom: var(--spacing-md);
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow-subtle);
+        }
+        .suggested-sections h3 {
+            font-family: var(--font-heading);
+            font-size: 1.1em;
+            color: var(--text-primary);
+            margin: 0 0 var(--spacing-sm) 0;
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+        }
+        .suggested-sections h3 .material-icons {
+            color: var(--primary-accent);
+        }
+        .suggested-sections ul {
+            list-style: none;
+            padding-left: 0;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-xs);
+        }
+        .suggested-sections ul li {
+            color: var(--text-secondary);
+            font-size: 0.9em;
+        }
+
+        /* 6. CARDS (Projetos, Emotional Memories) ======================== */
+        .cards-grid {
+            display: grid; gap: var(--spacing-lg);
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        }
+        .project-card, .diagnostic-card, .emotional-memory-card, .routine-card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius-lg);
+            padding: var(--spacing-xl);
+            box-shadow: var(--shadow-medium);
+            display: flex; flex-direction: column;
+        }
+        .project-card:hover, .routine-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-strong);
+        }
+        .project-card h4, .diagnostic-card h4, .emotional-memory-card h4, .routine-card h4 {
+            font-family: var(--font-heading);
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 1.25em;
+            margin: 0 0 var(--spacing-md) 0;
+            display: flex; align-items: center; gap: var(--spacing-sm);
+        }
+        .project-card h4 .material-icons, 
+        .diagnostic-card h4 .material-icons, 
+        .emotional-memory-card h4 .material-icons,
+        .routine-card h4 .material-icons {
+            color: var(--primary-accent);
+        }
+        .project-card p, .diagnostic-card p, .emotional-memory-card p, .routine-card p {
+            font-size: 1em;
+            color: var(--text-secondary);
+            margin: 0 0 var(--spacing-md) 0;
+        }
+        .project-microtasks-list, .diagnostic-category ul, .long-term-profile-display ul {
+            list-style: none; padding-left: 0;
+            margin: 0 0 var(--spacing-md) 0;
+            display: flex; flex-direction: column; gap: var(--spacing-xs);
+        }
+        .project-microtasks-list li::before {
+            content: '○'; color: var(--primary-accent);
+            position: absolute; left: 0;
+        }
+        .project-microtasks-list li { padding-left: var(--spacing-md); position: relative; }
+        .project-microtasks-list li.completed { text-decoration: line-through; opacity: 0.6; }
+        .project-microtasks-list li.completed::before { content: '●'; }
+
+        .card-actions { display: flex; justify-content: flex-end; margin-top: auto; padding-top: var(--spacing-md); }
+
+        /* 7. AGENDA (NOVA ESTRUTURA DE TIMELINE) =========================== */
+        /* Esta agora será a única view de tarefas/eventos */
+        #agendaDisplay { /* ID da div de exibição */
+            position: relative; 
+            height: calc(100% - var(--spacing-xxl)); 
+            overflow-y: auto; 
+            padding-right: var(--spacing-lg); 
+            padding-top: var(--spacing-md);
+            padding-bottom: var(--spacing-md);
+        }
+        .agenda-timeline-grid {
+            display: grid;
+            grid-template-columns: 60px 1fr; 
+            grid-auto-rows: 60px; 
+            position: relative;
+            height: 1440px; 
+            border-left: 1px solid var(--border-color); 
+            padding-left: var(--spacing-md);
+        }
+        .time-label {
+            grid-column: 1;
+            position: sticky;
+            left: 0;
+            top: 0; 
+            font-size: 0.8em;
+            color: var(--text-secondary);
+            text-align: right;
+            padding-right: var(--spacing-sm);
+            margin-top: -10px; 
+            pointer-events: none; 
+            z-index: 5; 
+        }
+        .timeline-hour-line {
+            grid-column: 2;
+            border-bottom: 1px dashed var(--border-color); 
+            position: relative;
+            margin-top: -1px; 
+            pointer-events: none;
+        }
+        .timeline-current-time-indicator {
+            position: absolute;
+            left: 0; 
+            width: 100%; 
+            height: 2px;
+            background-color: var(--error-red); 
+            z-index: 10;
+            transition: top 60s linear; 
+            pointer-events: none;
+        }
+        .timeline-current-time-indicator::after {
+            content: '';
+            position: absolute;
+            right: 0;
+            top: -4px;
+            width: 10px;
+            height: 10px;
+            background-color: var(--error-red);
+            border-radius: 50%;
+            border: 2px solid var(--bg-primary);
+        }
+
+        /* Blocos de Tarefas/Eventos (agora posicionados absolutamente) */
+        .agenda-event-block {
+            position: absolute;
+            left: 60px; 
+            width: calc(100% - 60px); 
+            background-color: var(--eixa-task-bg);
+            border-left: 4px solid var(--eixa-task-color);
+            border-radius: var(--border-radius-sm);
+            padding: var(--spacing-xs) var(--spacing-sm);
+            color: var(--text-primary);
+            font-size: 0.9em;
+            overflow: hidden; 
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            justify-content: center;
+            box-shadow: var(--shadow-subtle);
+            cursor: pointer;
+            z-index: 5; 
+        }
+        .agenda-event-block:hover {
+            box-shadow: var(--shadow-medium);
+            transform: translateY(-2px);
+            z-index: 11; 
+        }
+        .agenda-event-block.task-completed {
+            opacity: 0.7;
+            border-left-color: var(--success-green);
+            text-decoration: line-through;
+        }
+
+        /* Cores e Ícones por Origem */
+        .agenda-event-block.origin-google_calendar {
+            background-color: var(--google-calendar-event-bg);
+            border-left-color: var(--google-calendar-event-color);
+        }
+        .agenda-event-block.origin-routine { 
+            background-color: var(--routine-task-bg);
+            border-left-color: var(--routine-task-color);
+        }
+        .agenda-event-block .event-icons {
+            position: absolute;
+            top: var(--spacing-xs);
+            right: var(--spacing-xs);
+            display: flex;
+            gap: 2px;
+        }
+        .agenda-event-block .event-icons .material-icons {
+            font-size: 16px; 
+            color: var(--text-secondary);
+        }
+
+        /* SEÇÃO PARA EXIBIR TEMPLATES DE ROTINA, POSSIVELMENTE NO PERFIL OU EM OUTRA VIEW MENOS PROMINENTE */
+        /* Manter estilos de .routine-card pois ainda podem ser usados em outros lugares */
+        .routine-card {
+            /* Herda de .cards-grid e .project-card */
+            padding: var(--spacing-lg);
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius-lg);
+            box-shadow: var(--shadow-medium);
+        }
+        .routine-card h4 {
+            /* Herda de .project-card h4 */
+            font-size: 1.3em;
+            color: var(--eixa-dark-purple);
+        }
+        .routine-card .routine-description {
+            font-size: 0.95em;
+            color: var(--text-secondary);
+            margin-bottom: var(--spacing-md);
+        }
+        .routine-card .routine-days {
+            font-size: 0.85em;
+            color: var(--text-secondary);
+            font-weight: 600;
+            margin-bottom: var(--spacing-md);
+        }
+        .routine-card .routine-schedule-list {
+            list-style: none;
+            padding-left: 0;
+            margin-bottom: var(--spacing-md);
+            border-top: 1px dashed var(--border-color);
+            padding-top: var(--spacing-md);
+        }
+        .routine-card .routine-schedule-list li {
+            font-size: 0.9em;
+            color: var(--text-primary);
+            margin-bottom: var(--spacing-xs);
+            display: flex;
+            gap: var(--spacing-sm);
+            align-items: center;
+        }
+        .routine-card .routine-schedule-list li strong {
+            color: var(--eixa-lavender-accent);
+            font-weight: 700;
+        }
+        .routine-card .routine-schedule-list li .material-icons {
+            font-size: 18px;
+            color: var(--eixa-lavender-accent);
+        }
+
+
+        /* 8. DIAGNOSTICS (now Emotional Memories) ================ */
+        .diagnostic-intro { padding: 0 var(--spacing-lg); color: var(--text-secondary); text-align: center; }
+        .diagnostic-card h4 .material-icons { color: var(--primary-accent); }
+        .diagnostic-category {
+            margin-bottom: var(--spacing-lg);
+            background-color: var(--bg-secondary);
+            padding: var(--spacing-md);
+            border-radius: var(--border-radius-md);
+            border: 1px solid var(--border-color);
+        }
+        .diagnostic-category ul li {
+            padding-left: var(--spacing-md);
+            position: relative;
+            color: var(--text-secondary);
+        }
+        .diagnostic-category ul li::before {
+            content: "chevron_right";
+            font-family: 'Material Icons';
+            font-weight: normal; font-style: normal;
+            position: absolute; left: -4px; top: 1px;
+            color: var(--primary-accent);
+            font-size: 1.2em;
+        }
+        .diagnostic-timestamp { font-weight: 500; font-size: 0.9em; color: var(--text-secondary); }
+
+
+        /* 8.1. NEW STYLES: EMOTIONAL MEMORIES */
+        .emotional-memory-card {
+            padding: var(--spacing-lg);
+        }
+        .emotional-memory-card .memory-timestamp {
+            font-size: 0.85em;
+            color: var(--text-secondary);
+            margin-bottom: var(--spacing-sm);
+            text-align: right;
+        }
+        .emotional-memory-card .memory-content {
+            font-size: 1em;
+            color: var(--text-primary);
+            margin-bottom: var(--spacing-sm);
+            line-height: 1.5;
+        }
+        .emotional-memory-card .memory-tags-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--spacing-xs);
+            margin-top: var(--spacing-sm);
+            justify-content: flex-end;
+        }
+        .emotional-memory-card .memory-tag {
+            background-color: var(--bg-tertiary);
+            color: var(--text-secondary);
+            font-size: 0.8em;
+            padding: 4px var(--spacing-sm);
+            border-radius: var(--border-radius-sm);
+            border: 1px solid var(--border-color);
+            text-transform: capitalize;
+        }
+        .emotional-memory-card .memory-tag.no-tags {
+            opacity: 0.7;
+        }
+
+        /* 8.2. NEW STYLES: LONG-TERM MEMORY (PROFILE) E GOOGLE CALENDAR */
+        .long-term-profile-display {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius-lg);
+            padding: var(--spacing-xl);
+            box-shadow: var(--shadow-medium);
+            margin-bottom: var(--spacing-md);
+        }
+        .long-term-profile-display h3 {
+            font-family: var(--font-heading);
+            font-weight: 700;
+            font-size: 1.5em;
+            color: var(--primary-accent);
+            margin-top: var(--spacing-lg);
+            margin-bottom: var(--spacing-md);
+            border-bottom: 2px solid var(--primary-accent);
+            padding-bottom: var(--spacing-sm);
+        }
+        .long-term-profile-display h3:first-child { margin-top: 0; }
+
+        .long-term-profile-display h4 {
+            font-family: var(--font-heading);
+            font-weight: 600;
+            font-size: 1.2em;
+            color: var(--text-primary);
+            margin-top: var(--spacing-md);
+            margin-bottom: var(--spacing-sm);
+        }
+        .long-term-profile-display p {
+            font-size: 1em;
+            color: var(--text-primary);
+            margin-bottom: var(--spacing-sm);
+        }
+        .long-term-profile-display p strong {
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+        .long-term-profile-display ul {
+            list-style-type: none;
+            padding-left: 0;
+            margin-bottom: var(--spacing-md);
+        }
+        .long-term-profile-display ul li {
+            font-size: 0.95em;
+            color: var(--text-secondary);
+            margin-bottom: var(--spacing-xs);
+            padding-left: var(--spacing-sm);
+            position: relative;
+        }
+        .long-term-profile-display ul li::before {
+            content: '•';
+            color: var(--primary-accent);
+            position: absolute;
+            left: 0;
+            top: 0;
+        }
+        .long-term-profile-display .profile-section {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius-md);
+            padding: var(--spacing-md);
+            margin-bottom: var(--spacing-md);
+        }
+        .long-term-profile-display .profile-section h4 {
+            margin-top: 0;
+            font-size: 1.1em;
+            color: var(--primary-accent-darker);
+        }
+
+        /* Google Calendar Integration Button Style */
+        .connect-google-button {
+            background-color: var(--google-blue);
+            color: white; /* Always white text for Google blue */
+            padding: var(--spacing-md) var(--spacing-lg);
+            font-family: var(--font-body);
+            font-weight: 600;
+            font-size: 1rem;
+            border-radius: var(--border-radius-md);
+            cursor: pointer;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--spacing-sm);
+            box-shadow: var(--shadow-subtle);
+            margin-top: var(--spacing-md); /* Space from other elements */
+            width: fit-content; /* Only take content width */
+        }
+        .connect-google-button:hover {
+            background-color: var(--google-blue-dark);
+            box-shadow: var(--shadow-medium);
+            transform: translateY(-2px);
+        }
+        .connect-google-button .material-icons {
+            color: white; /* Icon also white */
+        }
+        .google-calendar-status-text {
+            font-size: 0.9em;
+            color: var(--text-secondary);
+            margin-top: var(--spacing-sm);
+        }
+
+
+        /* 9. COMPONENTS (Buttons, Modals, Toasts, etc.) ================ */
+        .icon-button {
+            background: none; border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: var(--spacing-sm);
+            border-radius: 50%;
+            display: inline-flex; align-items: center; justify-content: center;
+        }
+        .icon-button:hover { background-color: var(--bg-tertiary); color: var(--primary-accent); }
+        .icon-button .material-icons {
+            color: var(--text-secondary);
+            font-size: 24px;
+        }
+        .icon-button:hover .material-icons { color: var(--primary-accent); }
+
+        .add-action-button {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg, var(--eixa-lavender-accent), var(--primary-accent-darker));
+            color: white;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(208,176,255,0.5), 0 0 16px rgba(208,176,255,0.3); 
+            transition: all 0.3s ease-in-out;
+            flex-shrink: 0;
+        }
+
+        .add-action-button:hover,
+        .add-action-button:focus {
+            transform: scale(1.05) translateY(-2px);
+            box-shadow: 0 0 15px rgba(208,176,255,0.8), 0 0 30px rgba(208,176,255,0.6); 
+        }
+
+        .add-action-button .material-icons {
+            font-size: 28px;
+            color: white;
+            transition: inherit;
+        }
+
+        .button-primary, .button-secondary {
+            display: inline-flex; align-items: center; gap: var(--spacing-sm);
+            border: none;
+            padding: var(--spacing-md) var(--spacing-lg);
+            font-family: var(--font-body);
+            font-weight: 600;
+            font-size: 1rem;
+            border-radius: var(--border-radius-md);
+            cursor: pointer;
+        }
+        .button-primary { background-color: var(--primary-accent); color: white; }
+        .button-primary:hover { background-color: var(--primary-accent-darker); box-shadow: var(--shadow-medium); }
+        .button-primary .material-icons {
+            color: white;
+        }
+
+        .button-secondary {
+            background-color: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+        .button-secondary:hover { background-color: var(--bg-tertiary); border-color: var(--primary-accent); }
+        .button-secondary .material-icons {
+            color: var(--text-primary);
+        }
+        .button-secondary:hover .material-icons { color: var(--primary-accent); }
+
+
+        .modal {
+            display: flex;
+            position: fixed; z-index: 1000;
+            left: 0; top: 0; width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            align-items: center; justify-content: center;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+        .modal.active { 
+            opacity: 1; 
+            visibility: visible;
+        }
+        .modal-content {
+            background: var(--bg-primary);
+            padding: var(--spacing-xxl);
+            border-radius: var(--border-radius-lg);
+            box-shadow: var(--shadow-strong);
+            width: 90%; max-width: 550px;
+            position: relative;
+            display: flex; flex-direction: column; gap: var(--spacing-md);
+            transform: translateY(20px);
+            opacity: 0;
+            transition: transform 0.3s ease, opacity 0.3s ease;
+        }
+        .modal.active .modal-content {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        .modal-content h3 { font-family: var(--font-heading); margin: 0 0 var(--spacing-sm) 0; }
+        .modal-content .close-button { position: absolute; top: var(--spacing-md); right: var(--spacing-md); }
+        .modal-content label { font-weight: 600; font-size: 0.95em; color: var(--text-secondary); }
+        .modal-content input[type="text"], .modal-content input[type="date"], .modal-content input[type="time"], .modal-content input[type="number"], .modal-content textarea, .modal-content select {
+            width: 100%; padding: var(--spacing-md);
+            border: 1px solid var(--border-color);
+            background-color: var(--bg-secondary);
+            border-radius: var(--border-radius-md);
+            color: var(--text-primary);
+            font-family: var(--font-body); font-size: 1em;
+        }
+        .modal-content input:focus, .modal-content textarea:focus, .modal-content select:focus {
+            outline: none; border-color: var(--primary-accent);
+            box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary-accent) 25%, transparent);
+        }
+        .modal-row { display: flex; gap: var(--spacing-md); }
+        .modal-field { flex: 1; display: flex; flex-direction: column; gap: var(--spacing-xs); }
+        .modal-microtask-item { display: flex; align-items: center; gap: var(--spacing-sm); }
+        .modal-microtask-item input[type="text"] { flex: 1;}
+        .modal-microtask-item input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--primary-accent);}
+        .modal-microtask-item .remove-microtask-button .material-icons {
+            color: var(--text-secondary);
+        }
+        .modal-microtask-item .remove-microtask-button:hover .material-icons { color: var(--error-red); }
+
+        /* Estilo para o campo de input de texto no modal de confirmação */
+        .modal-input-text {
+            width: 100%;
+            padding: var(--spacing-sm) var(--spacing-md);
+            border: 1px solid var(--border-color);
+            background-color: var(--bg-secondary);
+            border-radius: var(--border-radius-sm);
+            margin-top: var(--spacing-sm);
+            color: var(--text-primary);
+            font-family: var(--font-body);
+            font-size: 1em;
+        }
+        .modal-input-text:focus {
+            outline: none;
+            border-color: var(--primary-accent);
+            box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary-accent) 25%, transparent);
+        }
+
+
+        .loading-indicator {
+            display: none; color: var(--primary-accent); font-size: 0.9em;
+            align-items: center; gap: var(--spacing-sm);
+            padding: var(--spacing-sm) 0;
+            justify-content: center;
+        }
+        .loading-indicator.active { display: flex; }
+
+        .toast-container { 
+            position: fixed; top: 20px; right: 20px; z-index: 9999; 
+            display: flex; flex-direction: column; gap: var(--spacing-sm); 
+            max-width: 90%;
+        }
+        .toast {
+            padding: var(--spacing-md);
+            border-radius: var(--border-radius-sm);
+            color: white; font-weight: 500;
+            box-shadow: var(--shadow-strong);
+            transform: translateX(120%);
+            opacity: 0;
+            transition: transform 0.4s ease-in-out, opacity 0.4s ease-in-out;
+        }
+        .toast.show { transform: translateX(0); opacity: 1; }
+        .toast.toast-info { background-color: var(--info-blue); }
+        .toast.toast-success { background-color: var(--success-green); }
+        .toast.toast-warning { background-color: var(--warning-orange); }
+        .toast.toast-error { background-color: var(--error-red); }
+
+        :focus-visible {
+            outline: 2px solid var(--primary-accent);
+            outline-offset: 2px;
+        }
+
+        .eixa-icon-fab {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 56px;
+            height: 56px;
+            background: var(--eixa-dark-purple);
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 0 10px rgba(208,176,255,0.6), 0 0 20px rgba(208,176,255,0.4);
+            z-index: 999;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .eixa-icon-fab:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(208,176,255,0.8), 0 0 30px rgba(208,176,255,0.6);
+        }
+        .eixa-icon-fab img {
+            width: 32px;
+            height: 32px;
+            filter: drop-shadow(0 0 5px var(--eixa-glow-color));
+            transition: filter 0.3s ease;
+        }
+
+        .confirmation-message {
+            background-color: var(--info-blue);
+            color: white;
+            padding: var(--spacing-md);
+            border-radius: var(--border-radius-lg);
+            margin-bottom: var(--spacing-md);
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-sm);
+            box-shadow: var(--shadow-medium);
+        }
+        .confirmation-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: var(--spacing-sm);
+        }
+        .confirmation-actions button {
+            padding: var(--spacing-sm) var(--spacing-md);
+            border-radius: var(--border-radius-md);
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .confirmation-actions .confirm-yes {
+            background-color: var(--success-green);
+            color: white;
+            border: none;
+        }
+        .confirmation-actions .confirm-no {
+            background-color: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+        /* Style for newly added button in confirmation modal */
+        .confirmation-actions .confirm-secondary {
+            background-color: var(--info-blue); /* or some other distinguishing color */
+            color: white;
+            border: none;
+        }
+
+
+        /* 10. RESPONSIVENESS (Desktop) ================================== */
+        @media (min-width: 768px) {
+            .app-container { 
+                flex-direction: row; 
+            }
+            .sidebar-menu {
+                order: 1;
+                width: 256px;
+                height: 100%;
+                border-top: none;
+                border-right: 1px solid var(--border-color);
+                border-radius: var(--border-radius-xl) 0 0 var(--border-radius-xl);
+                padding-bottom: 0;
+            }
+            .sidebar-menu.collapsed { 
+                width: 80px;
+            }
+            .sidebar-menu.collapsed .app-subtitle,
+            .sidebar-menu.collapsed .tab-text,
+            .sidebar-menu.collapsed #welcomeMessage,
+            .sidebar-menu.collapsed #userName { display: none; } 
+            
+            .sidebar-menu.collapsed .logo-text { display: none; }
+            .sidebar-menu.collapsed .sidebar-toggle-btn .material-icons { transform: rotate(180deg); }
+
+            .sidebar-header {
+                display: flex;
+                flex-direction: column;
+                padding: var(--spacing-xl) var(--spacing-lg);
+                padding-top: 0;
+            }
+            .sidebar-top-section {
+                display: flex;
+                align-items: center;
+                justify-content: flex-start;
+                width: 100%;
+                margin-bottom: var(--spacing-md);
+            }
+            .sidebar-menu.collapsed .sidebar-top-section .logo-text {
+                display: none;
+            }
+            .sidebar-toggle-btn { 
+                margin-left: auto;
+                margin-bottom: 0;
+                padding: var(--spacing-sm);
+            }
+            
+            .tabs-container {
+                flex-direction: column; padding: var(--spacing-md);
+                flex-grow: 1; justify-content: flex-start;
+                gap: var(--spacing-sm);
+            }
+            .tab-button {
+                flex-direction: row; justify-content: flex-start;
+                gap: var(--spacing-md);
+                font-size: 1rem;
+                padding: var(--spacing-md);
+            }
+            .sidebar-menu.collapsed .tab-button {
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                padding: var(--spacing-md) var(--spacing-sm);
+            }
+
+            .tab-button::before {
+                content: '';
+                position: absolute;
+                left: 0;
+                top: 50%;
+                transform: translateY(-50%) scaleY(0);
+                width: 6px;
+                height: 60%;
+                background: linear-gradient(to bottom, var(--eixa-lavender-accent), var(--primary-accent-darker));
+                border-radius: 0 4px 4px 0;
+                transition: transform 0.2s ease-in-out, box-shadow 0.2s ease;
+                box-shadow: 0 0 10px color-mix(in srgb, var(--eixa-glow-color) 30%, transparent);
+            }
+            .tab-button.active::before {
+                transform: translateY(-50%) scaleY(1);
+                box-shadow: 0 0 15px color-mix(in srgb, var(--eixa-glow-color) 60%, transparent);
+            }
+            
+            .sidebar-footer {
+                display: flex; flex-direction: column;
+                gap: var(--spacing-md);
+                padding: var(--spacing-md);
+                border-top: 1px solid var(--border-color);
+                margin-top: auto;
+            }
+            #userDisplayArea { 
+                display: flex !important; 
+                align-items: center; 
+                justify-content: space-between;
+                gap: var(--spacing-sm);
+                background-color: var(--bg-tertiary);
+                padding: var(--spacing-sm) var(--spacing-md);
+                border-radius: var(--border-radius-xl);
+                margin-bottom: var(--spacing-md);
+            }
+            #signOutBtn { 
+                margin-left: 0;
+            }
+            .app-settings-buttons { display: flex; justify-content: center; gap: var(--spacing-sm); }
+
+            .eixa-icon-fab {
+                bottom: 24px;
+                right: 24px;
+            }
+        }
+        /* Mobile styles - sidebar at the bottom (now acting as bottom nav) */
+        @media (max-width: 768px) {
+            /* 1. Login Mobile (Tela Travada) */
+            .auth-section {
+                position: absolute;
+                overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
+                height: auto;
+                min-height: 100vh;
+                align-items: flex-start;
+                padding-top: var(--spacing-xxl);
+                padding-bottom: var(--spacing-xxl);
+            }
+
+            .auth-card {
+                margin-top: auto;
+                margin-bottom: auto;
+            }
+
+            body.auth-active {
+                overflow-y: auto;
+                overflow-x: hidden;
+            }
+
+            /* 2. Chat Mobile */
+            .main-content-area {
+                flex-grow: 1;
+                overflow-y: auto;
+                padding-bottom: 90px;
+                position: relative;
+            }
+
+            .chat-display {
+                flex-grow: 1;
+                overflow-y: auto;
+                padding-bottom: var(--spacing-md);
+            }
+
+            .chat-input-area {
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                width: 100%;
+                z-index: 10;
+                padding: var(--spacing-md);
+                padding-bottom: calc(var(--spacing-md) + 60px);
+                box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
+                display: flex;
+                flex-direction: column;
+                gap: var(--spacing-sm);
+            }
+            
+            .chat-input-area #inputWrapper {
+                padding: var(--spacing-sm);
+                border-radius: var(--border-radius-xl);
+            }
+
+            .chat-input-area textarea#messageInput {
+                padding: var(--spacing-xs) 0;
+            }
+
+            #chatDisplay {
+                padding-bottom: calc(var(--spacing-xl) + 120px);
+            }
+
+            #agendaDisplay, /* Este é o display da nova aba Agenda (antiga Rotinas) */
+            #projetosDisplay,
+            #emotionalMemoriesDisplay,
+            #longTermMemoryDisplay,
+            #rotinasTemplatesViewContent { /* NOVO: Para a nova view de templates de rotina */
+                min-height: calc(100vh - 120px - 60px);
+                overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
+                padding-bottom: calc(var(--spacing-xxl) + 60px);
+            }
+
+            /* 3. FAB (Floating Action Button da IA) */
+            .eixa-icon-fab {
+                display: none !important;
+            }
+
+            /* 5. Bottom Navigation (Menu Inferior apenas no Mobile) */
+            .app-container {
+                flex-direction: column;
+                border-radius: 0;
+                box-shadow: none;
+            }
+            .sidebar-menu {
+                order: 2;
+                width: 100%;
+                border-radius: 0;
+                border-top: 1px solid var(--border-color);
+                padding: 8px 0 env(safe-area-inset-bottom);
+                flex-direction: row;
+                justify-content: space-around;
+                align-items: center;
+                height: auto;
+                flex-shrink: 0;
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                z-index: 100;
+                background-color: var(--bg-primary);
+            }
+            .main-content-area {
+                border-radius: 0;
+            }
+
+            .sidebar-menu .sidebar-header,
+            .sidebar-menu .sidebar-footer {
+                display: none;
+            }
+
+            .sidebar-menu .tabs-container {
+                padding: 0;
+                flex-grow: 1;
+                width: 100%;
+            }
+
+            .sidebar-menu .tab-button {
+                flex-direction: column;
+                flex-basis: 0;
+                flex-grow: 1;
+                font-size: 12px;
+                padding: var(--spacing-sm);
+                min-width: 60px;
+                height: 56px;
+                justify-content: center;
+                gap: 4px;
+            }
+            .sidebar-menu .tab-button::before {
+                display: none;
+            }
+
+            .auth-card {
+                padding: var(--spacing-xl) var(--spacing-lg);
+            }
+
+            /* 6. Botão de Tema e Logout para Mobile */
+            .mobile-settings-actions {
+                display: flex;
+                flex-direction: column;
+                gap: var(--spacing-md);
+                margin-top: var(--spacing-xl);
+                padding-top: var(--spacing-md);
+                border-top: 1px solid var(--border-color);
+            }
+
+            .mobile-settings-actions .button-secondary {
+                width: 100%;
+                justify-content: center;
+                font-size: 1rem;
+                padding: var(--spacing-md);
+            }
+        }
+
+        @media (min-width: 769px) {
+            .mobile-settings-actions {
+                display: none;
+            }
+        }
+    </style>
+    
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700&family=Roboto:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" as="style" onload="this.rel='stylesheet'">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700&family=Roboto:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700&family=Roboto:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet"></noscript>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link rel="icon" href="/favicon.ico" sizes="any">
+</head>
+<body class="light-mode">
+
+    <!-- O HTML do corpo do app permanece o mesmo. Apenas o script no final é alterado. -->
+    <div id="globalLoader" class="global-loader">...</div>
+    <div id="appContainer" class="app-container">
+        <aside id="sidebarMenu" class="sidebar-menu" style="display: none;">...</aside>
+        <main id="mainContentArea" class="main-content-area" style="display: none;"></main>
+        <section id="authSection" class="auth-section">...</section>
+    </div> 
+    <div id="toastContainer" class="toast-container"></div>
+    <div id="editProjectModal" class="modal"></div>
+    <div id="addTaskModal" class="modal"></div>
+    <div id="confirmationModal" class="modal"></div>
+    
+    <template id="views-template">...</template>
+    <!-- Todas as outras templates também permanecem as mesmas -->
+
+    <!-- ================================================================= -->
+    <!-- SCRIPT REFATORADO PARA FIREBASE SDK -->
+    <!-- ================================================================= -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-functions.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
+
+    <script>
+        'use strict';
+        
+        // --- FUNÇÕES UTILITÁRIAS GLOBAIS (Permanecem as mesmas) ---
+        let elements = {};
+        function showGlobalLoader() { /* ... */ }
+        function hideGlobalLoader() { /* ... */ }
+        function showToast(message, type = 'info', duration = 3500) { /* ... */ }
+        function displayAuthError(message) { /* ... */ }
+        function escapeHTML(str) { /* ... */ }
+        function parseMarkdownToHtml(text) { /* ... */ }
+        function formatDate(isoDateString) { /* ... */ }
+        function formatDateTime(timestamp) { /* ... */ }
+        function getPersonalizedGreeting() { /* ... */ }
+        function openModal(modalId) { /* ... */ }
+        function closeModal(modalId) { /* ... */ }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log("DEBUG: DOMContentLoaded. Iniciando EIXA com Firebase SDK.");
+
+            // --- CONFIGURAÇÃO E ESTADO GLOBAL ---
+            const firebaseConfig = {
+                apiKey: "AIzaSyAKEdwGJFjAXyY3vQUMm0sCIvdSfs-WInw",
+                authDomain: "arquitetodadivulgacao.firebaseapp.com",
+                projectId: "arquitetodadivulgacao",
+                storageBucket: "arquitetodadivulgacao.firebaseapp.com",
+                messagingSenderId: "760851989407",
+                appId: "1:760851989407:web:485fc9e2d0328b479473aa"
+            };
+
+            // Configuração da API do Backend no Cloud Run
+            const config = {
+                CLOUD_FUNCTION_URL: 'https://eixa-api-760851989407.us-east1.run.app/interact',
+                firebaseConfig: firebaseConfig
+            };
+
+            const i18nStrings = { /* ... (strings do original) ... */ };
+
+            let currentUser = null; 
+            let currentFileUploadPath = null;
+            let isSendingMessage = false;
+
+             // --- INITIALIZATION AND ELEMENT BINDING ---
+
+            function initializeApp() {
+                console.log("DEBUG: initializeApp started.");
+                showGlobalLoader(); 
+                try {
+                    firebase.initializeApp(firebaseConfig); 
+                    console.log("DEBUG: Firebase App initialized successfully.");
+                } catch (e) {
+                    console.error("DEBUG: FATAL: Firebase App initialization failed!", e);
+                    document.body.innerHTML = `<div style="color: red; font-family: sans-serif; padding: 20px;">
+                        <h1>Erro Crítico na Inicialização do Firebase</h1>
+                        <p>Verifique a configuração do seu projeto Firebase (apiKey, authDomain, projectId, storageBucket).</p>
+                        <p>Mensagem: ${e.message}</p>
+                        </div>`;
+                    hideGlobalLoader();
+                    return; 
+                }
+                
+                // 1. Inicializa elementos estáticos que SEMPRE estão no DOM
+                initializeStaticDOMElements(); // AGORA CHAMA O NOME CORRETO
+                
+                // 2. Popula os modais (cujo *conteúdo* vem de templates, mas as divs dos modais são estáticas)
+                if (elements.editProjectModal && elements.editProjectModalTemplate) {
+                    elements.editProjectModal.innerHTML = elements.editProjectModalTemplate.content.cloneNode(true).innerHTML;
+                }
+                if (elements.addTaskModal && elements.addTaskModalTemplate) {
+                    elements.addTaskModal.innerHTML = elements.addTaskModalTemplate.content.cloneNode(true).innerHTML;
+                }
+                if (elements.editRoutineModal && elements.editRoutineModalTemplate) {
+                    elements.editRoutineModal.innerHTML = elements.editRoutineModalTemplate.content.cloneNode(true).innerHTML;
+                }
+                if (elements.confirmationModal && elements.confirmationModalTemplate) {
+                    elements.confirmationModal.innerHTML = elements.confirmationModalTemplate.content.cloneNode(true).innerHTML;
+                }
+
+                // 3. Configura a autenticação (Firebase lida com o estado do usuário e chama initializeAppUIAndDisplay)
+                setupAuth(); 
+                
+                // 4. Configura listeners e tema (alguns listeners dependem da UI principal, mas esses são para o ciclo de vida inicial)
+                setupEventListeners(); // Esses são listeners globais no body ou window
+                applyInitialTheme(); // Tema inicial para body e botões estáticos
+                handleGoogleOAuthCallback(); // Para lidar com redirects de OAuth
+                
+                console.log("DEBUG: initializeApp finished.");
+            }
+
+            // FUNÇÃO PARA INICIALIZAR APENAS ELEMENTOS ESTÁTICOS (SEMPRE PRESENTES NO DOM)
+            function initializeStaticDOMElements() { // NOME DA FUNÇÃO CORRIGIDO AQUI
+                console.log("DEBUG: initializeStaticDOMElements started (static elements).");
+                const staticElementIds = [
+                    'globalLoader', 'appContainer', 'mainContentArea', 'authSection', 'sidebarMenu',
+                    'toastContainer', 'emailInput', 'passwordInput', 'emailLoginBtn', 
+                    'emailSignupBtn', 'googleLoginBtn', 'authErrorMessage', 'sidebarToggleBtn',
+                    'userDisplayArea', 'userName', 'welcomeMessage', 'signOutBtn', 
+                    'themeToggleBtn', 'loader-eixa', 'eixaIconFab', 
+                    'editProjectModal', 'addTaskModal', 'editRoutineModal', 'confirmationModal',
+                    'currentDateTimeDisplay' // Este é estático, está fora do views-template
+                ];
+                staticElementIds.forEach(id => {
+                    const propName = id.replace(/-([a-z])/g, (g) => g[1].toUpperCase()); 
+                    elements[propName] = document.getElementById(id);
+                    if (!elements[propName]) {
+                        console.warn(`DEBUG: Static element with ID '${id}' not found.`);
+                    }
+                });
+
+                // Templates (as tags <template> são estáticas, seu conteúdo é dinâmico)
+                elements.viewsTemplate = document.getElementById('views-template');
+                elements.agendaEventBlockTemplate = document.getElementById('agenda-event-block-template');
+                elements.projectCardTemplate = document.getElementById('project-card-template');
+                elements.routineCardTemplate = document.getElementById('routine-card-template');
+                elements.microtaskEditTemplate = document.getElementById('microtask-edit-template');
+                elements.routineItemEditTemplate = document.getElementById('routine-item-edit-template');
+                elements.diagnosticCardTemplate = document.getElementById('diagnostic-card-template');
+
+                elements.emotionalMemoryCardTemplate = document.getElementById('emotional-memory-card-template');
+                elements.longTermProfileTemplate = document.getElementById('long-term-profile-template');
+
+                elements.editProjectModalTemplate = document.getElementById('editProjectModalTemplate');
+                elements.addTaskModalTemplate = document.getElementById('addTaskModalTemplate');
+                elements.editRoutineModalTemplate = document.getElementById('editRoutineModalTemplate');
+                elements.confirmationModalTemplate = document.getElementById('confirmationModalTemplate');
+
+                // Botões da sidebar (são estáticos no corpo do HTML)
+                elements.tabButtons = document.querySelectorAll('.tab-button');
+                console.log("DEBUG: initializeStaticDOMElements finished (static elements).");
+            }
+
+            // FUNÇÃO PARA INICIALIZAR ELEMENTOS DINÂMICOS (chamada APENAS DEPOIS que o template é anexado)
+            function initializeDynamicDOMElementsInMainContent() {
+                console.log("DEBUG: initializeDynamicDOMElementsInMainContent started. (Getting refs from mainContentArea)");
+                
+                // Elementos dentro de #chatViewContent
+                elements.chatViewContent = document.getElementById('chatViewContent');
+                elements.chatDisplay = document.getElementById('chatDisplay');
+                elements.messageInput = document.getElementById('messageInput');
+                elements.sendMessageBtn = document.getElementById('sendMessageBtn');
+                elements.fileInput = document.getElementById('fileInput');
+                elements.fileUploadBtn = document.getElementById('fileUploadBtn');
+                elements.attachmentIcon = document.querySelector('#fileUploadBtn .material-icons');
+                elements.attachmentClearIcon = document.querySelector('.attachment-info .material-icons');
+                elements.attachmentInfoDiv = document.querySelector('.attachment-info');
+                elements.fileNameDisplay = document.querySelector('.attachment-info .file-name-display');
+
+                elements.loadingIndicator = document.getElementById('loadingIndicator');
+                elements.chatAiThinkingSrOnly = document.getElementById('chatAiThinkingSrOnly');
+                elements.chatAiThinkingVisible = document.getElementById('chatAiThinkingVisible');
+
+                elements.suggestedTasksContainer = document.getElementById('suggestedTasksContainer');
+                elements.suggestedTasksList = document.getElementById('suggestedTasksList');
+                elements.suggestedProjectsContainer = document.getElementById('suggestedProjectsContainer');
+                elements.suggestedProjectsCards = document.getElementById('suggestedProjectsCards');
+                elements.suggestedTasksTitleSpan = document.getElementById('suggestedTasksTitleSpan');
+                elements.suggestedProjectsTitleSpan = document.getElementById('suggestedProjectsTitleSpan');
+
+                elements.confirmationArea = document.getElementById('confirmationArea');
+                elements.confirmationText = document.getElementById('confirmationText');
+                elements.confirmYesBtnChat = document.getElementById('confirmYesBtnChat');
+                elements.confirmNoBtnChat = document.getElementById('confirmNoBtnChat');
+
+                elements.inputWrapper = document.getElementById('inputWrapper');
+
+                // Elementos dentro de #agendaViewContent
+                elements.agendaViewContent = document.getElementById('agendaViewContent');
+                elements.agendaDisplay = document.getElementById('agendaDisplay');
+                elements.openAddTaskModalBtn = document.getElementById('openAddTaskModalBtn');
+                elements.openAddRoutineModalBtn = document.getElementById('openAddRoutineModalBtn');
+                elements.syncGoogleCalendarBtnAgenda = document.getElementById('syncGoogleCalendarBtnAgenda');
+                
+                // Elementos dentro de #rotinasTemplatesViewContent
+                elements.rotinasTemplatesViewContent = document.getElementById('rotinasTemplatesViewContent');
+                elements.rotinasDisplay = document.getElementById('rotinasDisplay');
+                elements.openAddRoutineModalBtnSecondary = document.getElementById('openAddRoutineModalBtnSecondary');
+                
+                // Elementos dentro de #projetosViewContent
+                elements.projetosViewContent = document.getElementById('projetosViewContent');
+                elements.projetosDisplay = document.getElementById('projetosDisplay');
+                elements.openAddProjectModalBtn = document.getElementById('openAddProjectModalBtn');
+                
+                // Elementos dentro de #emotionalMemoriesViewContent
+                elements.emotionalMemoriesViewContent = document.getElementById('emotionalMemoriesViewContent');
+                elements.emotionalMemoriesDisplay = document.getElementById('emotionalMemoriesDisplay');
+                
+                // Elementos dentro de #longTermMemoryViewContent
+                elements.longTermMemoryViewContent = document.getElementById('longTermMemoryViewContent');
+                elements.longTermMemoryDisplay = document.getElementById('longTermMemoryDisplay');
+                
+                // Esta é uma NodeList de todos os view-content, também deve ser re-obtida após a injeção
+                elements.viewContents = elements.mainContentArea.querySelectorAll('.view-content');
+
+                console.log("DEBUG: initializeDynamicDOMElementsInMainContent finished.");
+            }
+
+            // FUNÇÃO PRINCIPAL DE INICIALIZAÇÃO DA UI (chamada após o login)
+            function initializeAppUIAndDisplay() {
+                console.log("DEBUG: initializeAppUIAndDisplay started.");
+                
+                // Sempre limpar o mainContentArea e reinserir o template para garantir um estado limpo
+                elements.mainContentArea.innerHTML = '';
+                const contentFragment = elements.viewsTemplate.content.cloneNode(true);
+                elements.mainContentArea.appendChild(contentFragment);  
+                console.log("DEBUG: Main content area populated from views-template.");
+
+                // Agora que os elementos estão no DOM, podemos coletar suas referências
+                initializeDynamicDOMElementsInMainContent();
+
+                // Define textos e visibilidades iniciais para os elementos da UI principal
+                if (elements.chatAiThinkingSrOnly) elements.chatAiThinkingSrOnly.textContent = i18nStrings.aiProcessing;
+                if (elements.chatAiThinkingVisible) elements.chatAiThinkingVisible.textContent = i18nStrings.aiProcessing;
+                
+                if (elements.suggestedTasksTitleSpan) elements.suggestedTasksTitleSpan.textContent = i18nStrings.suggestedTasksTitle;
+                if (elements.suggestedProjectsTitleSpan) elements.suggestedProjectsTitleSpan.textContent = i18nStrings.suggestedProjectsTitle;
+
+                if (elements.userDisplayArea) elements.userDisplayArea.style.display = 'flex';
+                if (elements.userName && currentUser) {
+                    elements.userName.textContent = currentUser.displayName?.split(' ')[0] || 'Usuário';
+                }
+                if (elements.welcomeMessage) elements.welcomeMessage.textContent = getPersonalizedGreeting();
+                
+                // Aplica o tema aos elementos dinâmicos (como ícones de tema nos botões móveis)
+                applyInitialTheme(); // Isso precisa ser chamado AQUI para atualizar ícones dos botões móveis (que são dinâmicos)
+                
+                // Ativa a primeira view (chat)
+                switchView('chatViewContent'); 
+                
+                // Configura listeners para elementos dinâmicos (que não são capturados pelo handleGlobalClick no body)
+                // Ex: listener para Enter no messageInput
+                if (elements.messageInput) {
+                    elements.messageInput.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault(); 
+                            handleSendMessage();
+                        }
+                    });
+                    console.log("DEBUG: Keydown listener added to messageInput.");
+                } else {
+                    console.warn("DEBUG: messageInput not found to attach keydown listener.");
+                }
+
+                // Configura o relógio
+                updateClockDisplay();
+                if (!window.clockInterval) {
+                    window.clockInterval = setInterval(updateClockDisplay, 1000);
+                }
+
+                // Removi a parte de anexar listeners para mobileThemeToggleBtn e mobileSignOutBtn aqui.
+                // Eles serão anexados dentro de displayLongTermMemory() quando o template do perfil for renderizado.
+
+                console.log("DEBUG: initializeAppUIAndDisplay finished.");
+            }
+
+            function setupEventListeners() {
+                console.log("DEBUG: setupEventListeners started. (Global event delegation)");
+                // Delega eventos para document.body para capturar cliques em elementos dinâmicos
+                document.body.addEventListener('click', handleGlobalClick); 
+                document.body.addEventListener('input', handleGlobalInput); 
+                document.body.addEventListener('change', handleGlobalChange); 
+
+                document.body.addEventListener('submit', (e) => e.preventDefault()); 
+
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape' && activeModalElement) {
+                        closeModal(activeModalElement.id);
+                    }
+                });
+
+                window.addEventListener('offline', () => { console.log("DEBUG: Offline event."); showToast(i18nStrings.offlineMessage, 'error', 0); }); 
+                window.addEventListener('online', () => { console.log("DEBUG: Online event."); showToast(i18nStrings.onlineMessage, 'success'); });
+                console.log("DEBUG: setupEventListeners finished.");
+            }
+
+            function handleGlobalClick(e) {
+                const target = e.target; 
+                console.log("DEBUG: handleGlobalClick - target:", target.id, target.className, target.tagName);
+
+                // Authentication logic (elementos estáticos ou já presentes)
+                if (target.closest('#emailLoginBtn')) handleEmailPasswordLogin();
+                else if (target.closest('#emailSignupBtn')) handleEmailPasswordSignup();
+                else if (target.closest('#googleLoginBtn')) handleGoogleLogin();
+                // Google Calendar: Estes botões são dinâmicos dentro do perfil, mas handleGlobalClick
+                // funciona por delegação. As referências `elements.connectGoogleCalendarBtn` etc.
+                // não são usadas aqui, apenas `target.closest()`.
+                else if (target.closest('#connectGoogleCalendarBtn')) handleConnectGoogleCalendar();
+                else if (target.closest('#syncGoogleCalendarBtn') || target.closest('#syncGoogleCalendarBtnAgenda')) handleSyncGoogleCalendar();
+                else if (target.closest('#disconnectGoogleCalendarBtn')) handleDisconnectGoogleCalendar();
+                // Mobile Settings Buttons: Também são dinâmicos dentro do perfil, mas a delegação global funciona.
+                else if (target.closest('#mobileThemeToggleBtn')) toggleTheme();
+                else if (target.closest('#mobileSignOutBtn')) firebase.auth().signOut();
+
+
+                // Sidebar and global controls logic (elementos estáticos ou re-referenciados)
+                else if (target.closest('#sidebarToggleBtn')) elements.sidebarMenu.classList.toggle('collapsed');
+                else if (target.closest('.tab-button')) switchView(target.closest('.tab-button').dataset.targetView);
+                else if (target.closest('#signOutBtn')) firebase.auth().signOut();
+                else if (target.closest('#themeToggleBtn')) toggleTheme();
+                else if (target.closest('.modal .close-button')) closeModal(target.closest('.modal').id);
+
+                // Chat area and attachments logic (elementos dinâmicos)
+                else if (target.closest('#sendMessageBtn')) handleSendMessage();
+                else if (target.closest('#fileUploadBtn')) elements.fileInput?.click();
+                else if (target.closest('.attachment-clear-icon')) clearAttachment();
+                else if (target.closest('.ai-message .copy-button')) copyAiMessageContent(target);
+
+                // FAB EIXA (estático)
+                else if (target.closest('.eixa-icon-fab')) {
+                    e.preventDefault(); 
+                    switchView('chatViewContent'); // Alterado para o nome da div diretamente
+                }
+                
+                // Confirmation buttons in chat (dinâmicos)
+                else if (target.closest('#confirmYesBtnChat')) handleConfirmationResponse('yes');
+                else if (target.closest('#confirmNoBtnChat')) handleConfirmationResponse('no');
+
+                // CRUD Modals logic (botões dentro de views dinâmicas)
+                else if (target.closest('#openAddTaskModalBtn')) {
+                    e.stopPropagation(); 
+                    openAddTaskModal();
+                }
+                else if (target.closest('#openAddProjectModalBtn')) {
+                    e.stopPropagation(); 
+                    openEditProjectModal(); 
+                }
+                else if (target.closest('#openAddRoutineModalBtn') || target.closest('#openAddRoutineModalBtnSecondary')) { 
+                    e.stopPropagation();
+                    openEditRoutineModal();
+                }
+                else if (target.closest('#viewRoutineTemplatesBtn')) { 
+                    e.stopPropagation();
+                    switchView('rotinasTemplatesViewContent'); 
+                    showToast("Exibindo templates de rotina.", 'info');
+                }
+                else if (target.closest('#saveNewTaskBtn')) saveNewTask();
+                else if (target.closest('#addMicrotaskModalBtn')) addMicrotaskToModal();
+                else if (target.closest('#addRoutineItemModalBtn')) addRoutineItemToModal();
+                else if (target.closest('#saveProjectChangesBtn')) saveProjectChanges();
+                else if (target.closest('#saveRoutineBtn')) saveRoutine();
+                // Confirmation Modal buttons (general modals, estáticos, mas seu conteúdo é populado)
+                else if (target.closest('#confirmYesBtn')) {  
+                    const confirmYesBtn = elements.confirmationModal.querySelector('#confirmYesBtn');
+                    if (confirmYesBtn && confirmYesBtn._callback) {
+                        confirmYesBtn._callback();  
+                    }
+                    closeModal('confirmationModal');    
+                }
+                else if (target.closest('#confirmNoBtn')) { 
+                    const confirmNoBtn = elements.confirmationModal.querySelector('#confirmNoBtn');
+                    if (confirmNoBtn && confirmNoBtn._callback) {
+                         confirmNoBtn._callback(); 
+                    }
+                    closeModal('confirmationModal');
+                }
+                else if (target.closest('.confirm-secondary')) { 
+                    const secondaryBtn = target.closest('.confirm-secondary');
+                    if (secondaryBtn && secondaryBtn._callback) {
+                        secondaryBtn._callback();
+                    }
+                    closeModal('confirmationModal');
+                }
+
+                // Agenda Task Actions logic (blocos de evento dinâmicos)
+                else if (target.closest('.agenda-event-block')) {
+                    const taskBlock = target.closest('.agenda-event-block');
+                    const taskId = taskBlock.dataset.id;
+                    const taskDate = taskBlock.dataset.date;
+                    const taskDescription = taskBlock.dataset.description;
+                    const taskTime = taskBlock.dataset.time;
+                    const taskDuration = taskBlock.dataset.durationMinutes;
+                    const taskCompleted = taskBlock.dataset.completed === 'true';
+                    const taskOrigin = taskBlock.dataset.origin;
+                    const googleCalendarId = taskBlock.dataset.googleCalendarEventId;
+
+                    // Diferencia a ação com base na origem
+                    if (taskOrigin === 'google_calendar') {
+                        showToast(`Evento do Google Calendar: "${taskDescription}" de ${taskTime}. Edite-o diretamente no seu Google Calendar.`, 'info', 5000);
+                    } else if (taskOrigin === 'routine') {
+                        showConfirmationModal(`Esta é uma tarefa da rotina "${escapeHTML(taskDescription)}". O que deseja fazer?`, 
+                            () => { 
+                                sendCrudRequest('task', 'update', taskId, { date: taskDate, completed: !taskCompleted, time: taskTime, duration_minutes: parseInt(taskDuration) });
+                            }, 
+                            () => { 
+                                showConfirmationModal(`Tem certeza que deseja EXCLUIR APENAS ESTA INSTÂNCIA de "${escapeHTML(taskDescription)}"?`, () => {
+                                    sendCrudRequest('task', 'delete', taskId, { date: taskDate });
+                                });
+                            },
+                            () => { 
+                                switchView('rotinasTemplatesViewContent'); 
+                                showToast(`Vá para a rotina "${escapeHTML(taskDescription)}" na aba "Templates de Rotina" para editá-la.`, 'info', 7000);
+                            },
+                            false, 
+                            taskCompleted ? i18nStrings.confirmTaskMarkPending : i18nStrings.confirmTaskMarkComplete, 
+                            i18nStrings.confirmTaskDeleteInstance, 
+                            i18nStrings.viewRoutineTemplate 
+                        );
+
+                    } else { // 'user_added' (tarefa normal da EIXA)
+                        showConfirmationModal(`O que deseja fazer com "${escapeHTML(taskDescription)}" às ${taskTime} em ${formatDate(taskDate)}?`, 
+                            () => { 
+                                sendCrudRequest('task', 'update', taskId, { date: taskDate, completed: !taskCompleted, time: taskTime, duration_minutes: parseInt(taskDuration) });
+                            }, 
+                            () => { 
+                                showConfirmationModal(`Tem certeza que deseja EXCLUIR "${escapeHTML(taskDescription)}"?`, () => {
+                                    sendCrudRequest('task', 'delete', taskId, { date: taskDate });
+                                });
+                            },
+                            null, 
+                            false, 
+                            taskCompleted ? i18nStrings.confirmTaskMarkPending : i18nStrings.confirmTaskMarkComplete, 
+                            i18nStrings.confirmTaskDeleteInstance 
+                        );
+                    }
+                }
+                
+                // Project Actions logic
+                else if (target.closest('.project-card .edit-button')) {
+                    const projectId = target.closest('.project-card').dataset.id;
+                    console.log("DEBUG: Loading project for edit:", projectId);
+                    loadProjectForEdit(projectId);
+                }
+                else if (target.closest('.project-card .delete-button')) {
+                    const projectCard = target.closest('.project-card');
+                    const projectId = projectCard.dataset.id;
+                    const projectName = projectCard.querySelector('h4').textContent;
+                    console.log(`DEBUG: Requesting delete for project: ${projectId}, '${projectName}'`);
+                    showConfirmationModal(`${i18nStrings.confirmProjectDelete} "${escapeHTML(projectName)}"?`, () => {
+                        sendCrudRequest('project', 'delete', projectId);
+                    });
+                }
+                else if (target.closest('.modal-microtask-item .remove-microtask-button')) {
+                    console.log("DEBUG: Removing microtask from modal.");
+                    target.closest('.modal-microtask-item').remove();
+                }
+                // Rotina Actions logic (botões nos cards de rotina no Perfil ou em uma view de templates)
+                else if (target.closest('.routine-card .edit-button')) {
+                    const routineId = target.closest('.routine-card').dataset.id;
+                    console.log("DEBUG: Loading routine for edit:", routineId);
+                    loadRoutineForEdit(routineId);
+                }
+                else if (target.closest('.routine-card .apply-button')) {
+                    const routineCard = target.closest('.routine-card');
+                    const routineId = routineCard.dataset.id;
+                    const routineName = routineCard.querySelector('.routine-name-display').textContent;
+                    console.log(`DEBUG: Requesting apply for routine: ${routineId}, '${routineName}'`);
+                    showConfirmationModal(`Aplicar a rotina "${escapeHTML(routineName)}" para qual data? (ex: "hoje", "amanhã", "2024-08-15")`, async (dateInput) => {
+                        const payload = {
+                            request_type: 'chat_and_view',
+                            message: `Aplique a rotina "${routineName}" (ID: ${routineId}) para ${dateInput}.`,
+                        };
+                        await handleSendMessage({ forcedMessage: payload.message });
+                        showToast(`Pedido para aplicar rotina "${routineName}" enviado.`, 'info');
+                    }, null, null, true); // O 'true' indica que queremos um input de texto na confirmação
+                }
+                else if (target.closest('.routine-card .delete-button')) {
+                    const routineCard = target.closest('.routine-card');
+                    const routineId = routineCard.dataset.id;
+                    const routineName = routineCard.querySelector('.routine-name-display').textContent;
+                    console.log(`DEBUG: Requesting delete for routine: ${routineId}, '${routineName}'`);
+                    showConfirmationModal(`${i18nStrings.confirmRoutineDelete} "${escapeHTML(routineName)}"?`, () => {
+                        sendCrudRequest('routine', 'delete', routineId);
+                    });
+                }
+                else if (target.closest('.modal-routine-item .remove-routine-item-button')) {
+                    console.log("DEBUG: Removing routine item from modal.");
+                    target.closest('.modal-routine-item').remove();
+                }
+            }
+
+            async function copyAiMessageContent(copyButton) {
+                const messageContentElement = copyButton.closest('.ai-message').querySelector('.message-content');
+                if (messageContentElement) {
+                    const textToCopy = messageContentElement.textContent || messageContentElement.innerText;
+                    try {
+                        const textarea = document.createElement('textarea');
+                        textarea.value = textToCopy;
+                        textarea.style.position = 'fixed';  
+                        textarea.style.opacity = '0';   
+                        document.body.appendChild(textarea);
+                        textarea.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(textarea);
+                        showToast(i18nStrings.copySuccess, 'success', 2000);
+                        console.log("DEBUG: Message copied to clipboard.");
+                    } catch (err) {
+                        console.error('DEBUG: Failed to copy text: ', err);
+                        showToast(i18nStrings.copyError, 'error', 2000);
+                    }
+                }
+            }
+
+            function handleGlobalInput(e) {
+                if (e.target.id === 'messageInput') {
+                    e.target.style.height = 'auto'; 
+                    e.target.style.height = e.target.scrollHeight + 'px';   
+                }
+                if (e.target.id === 'emailInput' || e.target.id === 'passwordInput') {
+                    displayAuthError('');
+                }
+            }
+
+            function handleGlobalChange(e) {
+                if (e.target.id === 'fileInput') {
+                    console.log("DEBUG: File input changed.");
+                    handleFileAttachment(e);
+                }
+            }
+
+            // --- View Rendering and Navigation Functions ---
+            function renderMessage(message, isUser) {
+                if (!elements.chatDisplay) { console.warn("DEBUG: chatDisplay element not found for rendering message."); return; }
+                const messageWrapper = document.createElement('div');
+                messageWrapper.className = `message ${isUser ? 'user-message' : 'ai-message'}`;
+                let contentHtml = '';
+                if (!isUser) {  
+                    contentHtml += `<div class="ai-avatar"><img src="https://storage.googleapis.com/eixa/eixa.svg" alt="EIXA IA" /></div>`;
+                }
+                contentHtml += `<div class="message-content">${parseMarkdownToHtml(message)}</div>`;
+                if (!isUser) {
+                    contentHtml += `<button class="icon-button copy-button" aria-label="Copiar mensagem">
+                        <i class="material-icons">content_copy</i>
+                    </button>`;
+                }
+
+                messageWrapper.innerHTML = contentHtml;
+                elements.chatDisplay.appendChild(messageWrapper);
+                elements.chatDisplay.scrollTop = elements.chatDisplay.scrollHeight;
+                console.log(`DEBUG: Message rendered - User: ${isUser}, Content: '${message.substring(0, 50)}...'`);
+            }
+
+            function updateSuggestedSections(tasks = [], projects = []) {
+                console.log("DEBUG: updateSuggestedSections called with tasks:", tasks.length, "projects:", projects.length);
+                // Verifica se os containers existem antes de tentar manipulá-los
+                if (!elements.suggestedTasksContainer || !elements.suggestedProjectsContainer) {
+                    console.warn("DEBUG: Suggested sections containers not found. Skipping update.");
+                    return;
+                }
+
+                // Verifica se as listas/cards existem dentro dos containers
+                if (!elements.suggestedTasksList || !elements.suggestedProjectsCards) {
+                    console.warn("DEBUG: Suggested tasks list or projects cards elements not found. Skipping update.");
+                    return;
+                }
+
+
+                if (tasks.length > 0) {
+                    elements.suggestedTasksList.innerHTML = tasks.map(t => `<li>${escapeHTML(t.description)}</li>`).join('');
+                    elements.suggestedTasksContainer.style.display = 'block';
+                    console.log("DEBUG: Displaying suggested tasks.");
+                } else {
+                    elements.suggestedTasksContainer.style.display = 'none';
+                }
+                if (projects.length > 0) {
+                    elements.suggestedProjectsCards.innerHTML = '';
+                    projects.forEach(p => {
+                        const renderedCard = renderProjectCard(p);
+                        if (renderedCard) { elements.suggestedProjectsCards.appendChild(renderedCard); }
+                    });
+                    elements.suggestedProjectsContainer.style.display = 'block';
+                    console.log("DEBUG: Displaying suggested projects.");
+                } else {
+                    elements.suggestedProjectsContainer.style.display = 'none';
+                }
+            }
+            
+            async function callBackendAPI(payload) {
+                console.log("DEBUG: callBackendAPI called with payload:", JSON.stringify(payload, null, 2));
+                if (!currentUser) { showToast(i18nStrings.unauthenticated, 'error'); console.warn("DEBUG: callBackendAPI aborted: User not authenticated."); return { status: 'error', response: i18nStrings.unauthenticated }; }
+
+                const isChatMessage = (payload.request_type === 'chat_and_view' && !payload.view_request && !payload.action); // Now check if action is null too
+                if (isChatMessage && isSendingMessage) {  
+                    console.warn("DEBUG: callBackendAPI aborted: Chat message already sending."); return { status: 'warning', response: 'Já enviando uma mensagem.' };  
+                }
+
+                if (isChatMessage) {
+                    showLoading();  
+                } else {
+                    showGlobalLoader();  
+                }
+
+                payload.user_id = currentUser.uid;
+                payload.debug_mode = debugMode; 
+
+                try {  
+                    const token = await currentUser.getIdToken(true);  
+                    console.log("DEBUG: Fetching token and sending request to:", config.CLOUD_FUNCTION_URL);
+                    const response = await fetch(config.CLOUD_FUNCTION_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify(payload)
+                    });
+                    console.log("DEBUG: Backend response status:", response.status);
+                    
+                    if (!response.ok) {  
+                        const errorData = await response.json().catch(() => ({ response: `${i18nStrings.apiError} HTTP: ${response.status}`, status: "error" }));
+                        console.error("DEBUG: Backend returned non-OK status:", response.status, "Error data:", errorData);
+                        return {status: "error", response: errorData.response || `${i18nStrings.apiError} HTTP ${response.status}`};
+                    }
+                    const data = await response.json();
+                    if (typeof data !== 'object' || data === null) {
+                        console.error("DEBUG: Backend returned invalid or empty JSON data:", data);
+                        return {status: "error", response: "Resposta inválida do servidor."};
+                    }
+                    const finalPayload = data.response_payload || data; 
+                    if (!finalPayload || typeof finalPayload !== 'object' || !finalPayload.status) {
+                        console.error("DEBUG: Backend returned unexpected payload structure:", data);
+                        return {status: "error", response: "Resposta inválida do servidor ou payload ausente."};
+                    }
+                    console.log("DEBUG: Backend response data (parsed payload):", finalPayload);
+                    return finalPayload;
+                }
+                catch (error) {
+                    console.error("DEBUG: Erro em callBackendAPI:", error);
+                    if (error instanceof TypeError && error.message === 'Failed to fetch') {
+                        showToast("Erro de conexão (CORS/rede). Verifique a URL do backend.", 'error');
+                        return {status: "error", response: "Erro de conexão com o servidor. Verifique o console para detalhes de CORS."};
+                    }
+                    return {status: "error", response: `${i18nStrings.apiError} ${error.message}`};
+                }
+                finally{
+                    if (isChatMessage) {
+                        hideLoading();
+                    } else {
+                        hideGlobalLoader();
+                    }
+                    console.log("DEBUG: callBackendAPI finished.");
+                }
+            }
+
+            function switchView(targetViewName) {
+                console.log("DEBUG: switchView called for:", targetViewName);
+                // elements.viewContents e elements.tabButtons são populados em initializeAppUIAndDisplay
+                if (!elements.viewContents || elements.viewContents.length === 0) {
+                    console.error("DEBUG: Views não foram inicializadas ou estão ausentes. Não é possível trocar de view. Isso indica um problema na inicialização da UI.");
+                    return;
+                }
+                if (!elements.tabButtons || elements.tabButtons.length === 0) {
+                    console.error("DEBUG: Botões de aba não encontrados. Não é possível trocar de view.");
+                    return;
+                }
+
+
+                elements.viewContents.forEach(v => {
+                    v.classList.remove('active');
+                    v.setAttribute('aria-hidden', 'true');
+                    v.setAttribute('tabindex', '-1');
+                });
+                elements.tabButtons.forEach(b => {
+                    b.classList.remove('active');
+                    b.setAttribute('aria-selected', 'false');
+                    b.setAttribute('tabindex', '-1');
+                });
+
+                // Use document.getElementById para elementos que sabemos que agora estão no DOM
+                const targetView = document.getElementById(targetViewName); 
+                const targetButton = document.querySelector(`.tab-button[data-target-view="${targetViewName.replace('ViewContent', '')}"]`);
+
+                if (targetView) {
+                    targetView.classList.add('active');
+                    targetView.setAttribute('aria-hidden', 'false');
+                    targetView.setAttribute('tabindex', '0');
+                    targetView.focus();
+                    console.log("DEBUG: View activated:", targetViewName);
+                } else {
+                    console.warn("DEBUG: Target view content not found:", targetViewName);
+                }
+                if (targetButton) {
+                    targetButton.classList.add('active');
+                    targetButton.setAttribute('aria-selected', 'true');
+                    targetButton.setAttribute('tabindex', '0');
+                } else {
+                    console.debug("DEBUG: Target tab button not found for dynamic view (e.g., routine templates):", targetViewName);
+                }
+
+                if (targetViewName !== 'chatViewContent') { 
+                    console.log("DEBUG: Loading data for non-chat view:", targetViewName);
+                    loadViewData(targetViewName.replace('ViewContent', '')); 
+                }
+                else { 
+                    if (elements.messageInput) elements.messageInput.focus(); 
+                    console.log("DEBUG: Switched to chat view.");
+                }
+            }
+
+            async function loadViewData(viewName) {
+                console.log("DEBUG: loadViewData called for:", viewName);
+                const payload = { request_type: 'chat_and_view', view_request: viewName };
+                const data = await callBackendAPI(payload);
+                if (data?.status === 'success') {
+                    const viewData = data.html_view_data;
+                    console.log("DEBUG: Data received for view:", viewName, "Data:", viewData);
+                    
+                    // Assegura que os elementos de display existam antes de tentar usar
+                    if (viewName === 'agenda' && elements.agendaDisplay) displayAgenda(viewData.agenda);
+                    else if (viewName === 'projetos' && elements.projetosDisplay) displayProjects(viewData.projetos);
+                    else if (viewName === 'rotinasTemplatesViewContent'.replace('ViewContent', '') && elements.rotinasDisplay) displayRoutinesTemplates(viewData.routines); 
+                    else if (viewName === 'emotionalMemories' && elements.emotionalMemoriesDisplay) displayEmotionalMemories(viewData.emotional_memories);  
+                    else if (viewName === 'longTermMemory' && elements.longTermMemoryDisplay) displayLongTermMemory(viewData.long_term_memory);  
+                    else console.warn("DEBUG: No display function or display element found for view:", viewName);
+                } else {
+                    console.error("DEBUG: Failed to load view data for:", viewName, "Response:", data);
+                    showToast(data?.response || `Erro ao carregar dados de ${viewName}`, 'error');
+                }
+            }
+
+            // Função para calcular a posição vertical em pixels (se 1px por minuto, 60px por hora)
+            function calculateTopPosition(timeStr, pixelsPerHour = 60) {
+                if (!timeStr || !timeStr.includes(':')) return 0; 
+                const [hours, minutes] = timeStr.split(':').map(Number);
+                return (hours * pixelsPerHour) + (minutes * (pixelsPerHour / 60));
+            }
+
+            // Função para calcular a altura em pixels
+            function calculateHeight(durationMinutes, pixelsPerHour = 60) {
+                return Math.max(20, (durationMinutes / 60) * pixelsPerHour);
+            }
+
+            // MODIFICADO: displayAgenda para renderizar a linha do tempo com dados expandidos
+            function displayAgenda(agendaData) {
+                console.log("DEBUG: displayAgenda called. agendaData:", agendaData);
+                const displayArea = elements.agendaDisplay; 
+                if (!displayArea) { console.warn("DEBUG: agendaDisplay element not found."); return; }
+                displayArea.innerHTML = '';
+
+                const now = new Date();
+                const todayISO = now.toLocaleDateString('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }); 
+                
+                const todayData = agendaData[todayISO]; 
+
+                if (!todayData || !todayData.tasks || todayData.tasks.length === 0) {
+                    displayArea.innerHTML = `<p class="no-data-message">${i18nStrings.noDataMessageAgenda}</p>`;
+                    console.log("DEBUG: No tasks for today, displayed empty message.");
+                    return;
+                }
+
+                const timelineGrid = document.createElement('div');
+                timelineGrid.className = 'agenda-timeline-grid';
+
+                for (let h = 0; h < 24; h++) {
+                    const timeLabel = document.createElement('div');
+                    timeLabel.className = 'time-label';
+                    timeLabel.textContent = `${String(h).padStart(2, '0')}:00`;
+                    timeLabel.style.gridRowStart = h + 1;
+                    timeLabel.style.gridRowEnd = h + 2;
+                    timelineGrid.appendChild(timeLabel);
+
+                    const hourLine = document.createElement('div');
+                    hourLine.className = 'timeline-hour-line';
+                    hourLine.style.gridRowStart = h + 1;
+                    hourLine.style.gridRowEnd = h + 2;
+                    timelineGrid.appendChild(hourLine);
+                }
+
+                const currentTimeIndicator = document.createElement('div');
+                currentTimeIndicator.className = 'timeline-current-time-indicator';
+                timelineGrid.appendChild(currentTimeIndicator);
+
+                function updateCurrentTimeIndicator() {
+                    const nowLocal = new Date();
+                    const hours = nowLocal.getHours();
+                    const minutes = nowLocal.getMinutes();
+                    const seconds = nowLocal.getSeconds();
+                    
+                    const totalMinutesToday = (hours * 60) + minutes;
+                    const pixelsPerMinute = 60 / 60; 
+                    const topPosition = totalMinutesToday * pixelsPerMinute;
+                    
+                    currentTimeIndicator.style.top = `${topPosition}px`;
+                    
+                    if (displayArea) { 
+                        const viewportHeight = displayArea.clientHeight;
+                        displayArea.scrollTop = topPosition - (viewportHeight / 2); 
+                    }
+                }
+                setInterval(updateCurrentTimeIndicator, 30 * 1000); 
+                updateCurrentTimeIndicator(); 
+
+                todayData.tasks.forEach(task => {
+                    const eventBlock = renderAgendaEventBlock(task, todayISO);
+                    if (eventBlock) {
+                        const top = calculateTopPosition(task.time);
+                        const height = calculateHeight(task.duration_minutes);
+                        eventBlock.style.top = `${top}px`;
+                        eventBlock.style.height = `${height}px`;
+                        timelineGrid.appendChild(eventBlock);
+                    }
+                });
+
+                displayArea.appendChild(timelineGrid); 
+                console.log("DEBUG: displayAgenda finished.");
+            }
+
+            // Renderiza um bloco de evento na linha do tempo com ícones e metadados
+            function renderAgendaEventBlock(task, dateStr) {
+                if (!elements.agendaEventBlockTemplate) { console.warn("DEBUG: agendaEventBlockTemplate not found."); return null; }
+                const block = elements.agendaEventBlockTemplate.content.cloneNode(true).firstElementChild;
+                
+                block.dataset.id = task.id;
+                block.dataset.date = dateStr;
+                block.dataset.description = task.description;
+                block.dataset.time = task.time;
+                block.dataset.durationMinutes = task.duration_minutes;
+                block.dataset.completed = task.completed;
+                block.dataset.origin = task.origin; 
+                block.dataset.routineItemId = task.routine_item_id || '';
+                block.dataset.googleCalendarEventId = task.google_calendar_event_id || '';
+                block.dataset.createdAt = task.created_at || '';
+                block.dataset.updatedAt = task.updated_at || '';
+
+                block.querySelector('.event-time').textContent = task.time;
+                block.querySelector('.event-description').textContent = escapeHTML(task.description);
+
+                if (task.completed) block.classList.add('task-completed');
+                block.classList.add(`origin-${task.origin}`); 
+
+                const iconsContainer = block.querySelector('.event-icons');
+                iconsContainer.innerHTML = ''; 
+
+                if (task.origin === 'google_calendar') {
+                    const icon = document.createElement('i');
+                    icon.className = 'material-icons';
+                    icon.textContent = 'calendar_today';
+                    icon.title = 'Evento do Google Calendar';
+                    iconsContainer.appendChild(icon);
+                } else if (task.origin === 'routine') {
+                    const icon = document.createElement('i');
+                    icon.className = 'material-icons';
+                    icon.textContent = 'repeat';
+                    icon.title = 'Tarefa de Rotina';
+                    iconsContainer.appendChild(icon);
+                } else { // user_added
+                    if (task.completed) {
+                        const icon = document.createElement('i');
+                        icon.className = 'material-icons';
+                        icon.textContent = 'check_circle';
+                        icon.title = 'Tarefa Concluída';
+                        iconsContainer.appendChild(icon);
+                    }
+                    // Ações de editar/deletar não são mais ícones fixos no bloco para evitar clique acidental.
+                    // Serão gerenciadas pelo modal de confirmação/ação.
+                }
+                
+                return block;
+            }
+
+            function displayProjects(projectsData) {
+                console.log("DEBUG: displayProjects called with data:", projectsData);
+                const displayArea = elements.projetosDisplay;
+                if (!displayArea) { console.warn("DEBUG: projetosDisplay element not found."); return; }
+                displayArea.innerHTML = '';
+
+                if (!projectsData || projectsData.length === 0) {
+                    displayArea.innerHTML = `<p class="no-data-message">${i18nStrings.noDataMessageProjects}</p>`;
+                    console.log("DEBUG: No projects data found.");
+                    return;
+                }
+
+                const grid = document.createElement('div');
+                grid.className = 'cards-grid';
+                projectsData.forEach(p => {
+                    const renderedCard = renderProjectCard(p);
+                    if (renderedCard) { grid.appendChild(renderedCard); }
+                });
+                displayArea.appendChild(grid);
+                console.log(`DEBUG: Displayed ${projectsData.length} projects.`);
+            }
+
+            function renderProjectCard(project) {
+                if (!elements.projectCardTemplate) { console.warn("DEBUG: projectCardTemplate not found."); return null; }
+                const card = elements.projectCardTemplate.content.cloneNode(true).firstElementChild;
+                card.dataset.id = project.id;
+                card.querySelector('h4').textContent = escapeHTML(project.name);
+                card.querySelector('.project-description').textContent = escapeHTML(project.description || 'Sem descrição.');
+                card.querySelector('.project-status-display').textContent = escapeHTML(project.status || 'N/A');  
+                card.querySelector('.project-deadline').textContent = formatDate(project.deadline);
+
+                const microtasksList = card.querySelector('.project-microtasks-list');
+                microtasksList.innerHTML = '';
+                if (project.micro_tasks?.length > 0) {
+                    project.micro_tasks.forEach(mt => {
+                        const li = document.createElement('li');
+                        li.textContent = escapeHTML(mt.description);
+                        if (mt.completed) li.classList.add('completed');
+                        microtasksList.appendChild(li);
+                    });
+                } else {
+                    microtasksList.innerHTML = '<li>Nenhuma microtarefa.</li>';
+                }
+                return card;
+            }
+
+            // NOVO: Função para exibir os TEMPLATES de Rotinas (agora em uma view separada se loadViewData('rotinasTemplatesViewContent') for chamado)
+            function displayRoutinesTemplates(routinesData) {
+                console.log("DEBUG: displayRoutinesTemplates called with data:", routinesData);
+                const displayArea = elements.rotinasDisplay; 
+                if (!displayArea) { console.warn("DEBUG: rotinasDisplay element not found."); return; }
+                displayArea.innerHTML = '';
+
+                if (!routinesData || routinesData.length === 0) {
+                    displayArea.innerHTML = `<p class="no-data-message">${i18nStrings.noDataMessageRoutines}</p>`;
+                    console.log("DEBUG: No routines data found.");
+                    return;
+                }
+
+                const grid = document.createElement('div');
+                grid.className = 'cards-grid';
+                routinesData.forEach(r => {
+                    const renderedCard = renderRoutineCard(r);
+                    if (renderedCard) { grid.appendChild(renderedCard); }
+                });
+                displayArea.appendChild(grid);
+                console.log(`DEBUG: Displayed ${routinesData.length} routine templates.`);
+            }
+
+            function renderRoutineCard(routine) {
+                if (!elements.routineCardTemplate) { console.warn("DEBUG: routineCardTemplate not found."); return null; }
+                const card = elements.routineCardTemplate.content.cloneNode(true).firstElementChild;
+                card.dataset.id = routine.id;
+                card.querySelector('.routine-name-display').textContent = escapeHTML(routine.name);
+                card.querySelector('.routine-description').textContent = escapeHTML(routine.description || 'Sem descrição.');
+                
+                const daysOfWeek = routine.applies_to_days && routine.applies_to_days.length > 0
+                    ? routine.applies_to_days.map(d => {
+                        const dayNames = {
+                            "MONDAY": "Seg", "TUESDAY": "Ter", "WEDNESDAY": "Qua",
+                            "THURSDAY": "Qui", "FRIDAY": "Sex", "SATURDAY": "Sáb", "SUNDAY": "Dom"
+                        };
+                        return dayNames[d] || d;
+                    }).join(', ')
+                    : 'Todos os dias';
+                card.querySelector('.routine-days-display').textContent = daysOfWeek;
+
+                const scheduleList = card.querySelector('.routine-schedule-list');
+                scheduleList.innerHTML = '';
+                if (routine.schedule && routine.schedule.length > 0) {
+                    routine.schedule.forEach(item => {
+                        const li = document.createElement('li');
+                        li.innerHTML = `<i class="material-icons">event</i> 
+                                        <strong>${escapeHTML(item.time)}</strong> - 
+                                        ${escapeHTML(item.description)} (${item.duration_minutes || 0}min)
+                                        <span style="font-size: 0.8em; opacity: 0.7; margin-left: auto;">
+                                            (ID: ${item.id ? escapeHTML(item.id.substring(0,4)) + '...' : 'N/A'})
+                                            (Criado: ${formatDateTime(item.created_at) || 'N/A'})
+                                        </span>`;
+                        scheduleList.appendChild(li);
+                    });
+                } else {
+                    scheduleList.innerHTML = '<li>Nenhum item agendado.</li>';
+                }
+                return card;
+            }
+
+            function displayEmotionalMemories(memoriesData) {
+                console.log("DEBUG: displayEmotionalMemories called with data:", memoriesData);
+                const displayArea = elements.emotionalMemoriesDisplay;
+                if (!displayArea) { console.warn("DEBUG: emotionalMemoriesDisplay element not found."); return; }
+                displayArea.innerHTML = '';  
+
+                if (!memoriesData || memoriesData.length === 0) {
+                    displayArea.innerHTML = `<p class="no-data-message">${i18nStrings.noDataMessageEmotionalMemories}</p>`;
+                    console.log("DEBUG: No emotional memories data found.");
+                    return;
+                }
+
+                memoriesData.forEach(mem => {
+                    const card = elements.emotionalMemoryCardTemplate.content.cloneNode(true).firstElementChild;
+                    card.querySelector('.memory-timestamp span').textContent = formatDateTime(mem.timestamp);
+                    card.querySelector('.memory-content').innerHTML = parseMarkdownToHtml(mem.content);  
+
+                    const tagsContainer = card.querySelector('.memory-tags-list');
+                    if (mem.tags && mem.tags.length > 0) {
+                        mem.tags.forEach(tag => {
+                            const span = document.createElement('span');
+                            span.className = 'memory-tag';  
+                            span.textContent = escapeHTML(tag.replace(/_/g, ' '));  
+                            tagsContainer.appendChild(span);
+                        });
+                    } else {
+                        tagsContainer.innerHTML = '<span class="memory-tag no-tags">Sem tags</span>';
+                    }
+                    displayArea.appendChild(card);
+                });
+                console.log(`DEBUG: Displayed ${memoriesData.length} emotional memories.`);
+            }
+
+            // displayLongTermMemory para incluir status do Google Calendar e botão para Templates de Rotina
+            async function displayLongTermMemory(profileData) {
+                console.log("DEBUG: displayLongTermMemory called with data:", profileData);
+                const displayArea = elements.longTermMemoryDisplay;
+                if (!displayArea) { console.warn("DEBUG: longTermMemoryDisplay element not found."); return; }
+                displayArea.innerHTML = '';  
+
+                if (!profileData || Object.keys(profileData).length === 0) {
+                    displayArea.innerHTML = `<p class="no-data-message">${i18nStrings.noDataMessageLongTermMemory}</p>`;
+                    console.log("DEBUG: No long term memory profile data found.");
+                    return;
+                }
+
+                const profileContainer = elements.longTermProfileTemplate.content.cloneNode(true).firstElementChild;
+
+                // Preencher campos de texto simples
+                const simpleFields = {
+                    'name': profileData.name,
+                    'locale': profileData.locale,
+                    'timezone': profileData.timezone,
+                    'tone_preference': profileData.communication_preferences?.tone_preference,
+                    'intervention_style': profileData.communication_preferences?.intervention_style,
+                    'professional': profileData.life_domains?.professional,
+                    'personal_relationships': profileData.life_domains?.personal_relationships,
+                    'health_and_wellness': profileData.life_domains?.health_and_wellness
+                };
+                for (const field in simpleFields) {
+                    const element = profileContainer.querySelector(`[data-field="${field}"]`);
+                    if (element) {
+                        element.textContent = escapeHTML(String(simpleFields[field] || 'N/A').replace(/_/g, ' '));
+                    }
+                }
+
+                // Preencher listas
+                const listFields = {
+                    'personality_traits': profileData.psychological_profile?.personality_traits,
+                    'diagnoses_and_conditions': profileData.psychological_profile?.diagnoses_and_conditions,
+                    'historical_behavioral_patterns': profileData.psychological_profile?.historical_behavioral_patterns,
+                    'coping_mechanisms': profileData.psychological_profile?.coping_mechanisms,
+                    'cognitive_style': profileData.cognitive_style,
+                    'expected_eixa_actions': profileData.eixa_interaction_preferences?.expected_eixa_actions,
+                    'specific_no_gos': profileData.eixa_interaction_preferences?.specific_no_gos
+                };
+                for (const field in listFields) {
+                    const ul = profileContainer.querySelector(`[data-field="${field}"]`);
+                    if (ul) {
+                        ul.innerHTML = '';  
+                        const items = listFields[field];
+                        if (items && items.length > 0) {
+                            items.forEach(item => {
+                                const li = document.createElement('li');
+                                li.textContent = escapeHTML(String(item).replace(/_/g, ' '));  
+                                ul.appendChild(li);
+                            });
+                        } else {
+                            ul.innerHTML = '<li>Nenhum item registrado.</li>';
+                        }
+                    }
+                }
+
+                // Referências para os elementos DENTRO DESTE FRAGMENTO CLONADO (profileContainer)
+                const googleCalendarStatusElement = profileContainer.querySelector('#googleCalendarStatus');
+                const connectBtn = profileContainer.querySelector('#connectGoogleCalendarBtn');
+                const syncBtn = profileContainer.querySelector('#syncGoogleCalendarBtn');
+                const disconnectBtn = profileContainer.querySelector('#disconnectGoogleCalendarBtn');
+                const viewRoutineTemplatesBtn = profileContainer.querySelector('#viewRoutineTemplatesBtn'); 
+                const mobileThemeToggleBtn = profileContainer.querySelector('#mobileThemeToggleBtn');
+                const mobileSignOutBtn = profileContainer.querySelector('#mobileSignOutBtn');
+
+                if (googleCalendarStatusElement) {
+                    googleCalendarStatusElement.textContent = i18nStrings.connectGoogleCalendarStatusChecking;
+                }
+
+                // Chamada ao backend para verificar se há credenciais válidas
+                const checkCredsPayload = {
+                    user_id: currentUser.uid,
+                    request_type: 'chat_and_view', 
+                    view_request: 'google_calendar_connection_status' 
+                };
+                const credsResponse = await callBackendAPI(checkCredsPayload);
+                
+                if (credsResponse && credsResponse.status === 'success' && credsResponse.html_view_data?.google_calendar_connected_status !== undefined) {
+                    if (credsResponse.html_view_data.google_calendar_connected_status === true) {
+                        if (googleCalendarStatusElement) googleCalendarStatusElement.textContent = i18nStrings.connectGoogleCalendarStatusConnected;
+                        if (connectBtn) connectBtn.style.display = 'none';
+                        if (syncBtn) syncBtn.style.display = 'inline-flex';
+                        if (disconnectBtn) disconnectBtn.style.display = 'inline-flex';
+                        console.log("DEBUG: Google Calendar is connected.");
+                    } else {
+                        if (googleCalendarStatusElement) googleCalendarStatusElement.textContent = i18nStrings.connectGoogleCalendarStatusNotConnected;
+                        if (connectBtn) connectBtn.style.display = 'inline-flex';
+                        if (syncBtn) syncBtn.style.display = 'none';
+                        if (disconnectBtn) disconnectBtn.style.display = 'none';
+                        console.log("DEBUG: Google Calendar is NOT connected.");
+                    }
+                } else {
+                    if (googleCalendarStatusElement) googleCalendarStatusElement.textContent = i18nStrings.connectGoogleCalendarStatusNotConnected;
+                    if (connectBtn) connectBtn.style.display = 'inline-flex';
+                    if (syncBtn) syncBtn.style.display = 'none';
+                    if (disconnectBtn) disconnectBtn.style.display = 'none';
+                    console.error("DEBUG: Failed to retrieve Google Calendar connection status or unexpected response:", credsResponse);
+                }
+
+                // ANEXAR LISTENERS DIRETAMENTE aos botões recém-criados no template do perfil
+                if (connectBtn) connectBtn.addEventListener('click', handleConnectGoogleCalendar);
+                if (syncBtn) syncBtn.addEventListener('click', handleSyncGoogleCalendar);
+                if (disconnectBtn) disconnectBtn.addEventListener('click', handleDisconnectGoogleCalendar);
+                if (viewRoutineTemplatesBtn) viewRoutineTemplatesBtn.addEventListener('click', (e) => {
+                    e.stopPropagation(); 
+                    switchView('rotinasTemplatesViewContent'); 
+                });
+                if (mobileThemeToggleBtn) {
+                    mobileThemeToggleBtn.addEventListener('click', toggleTheme);
+                    const iconElement = mobileThemeToggleBtn.querySelector('.material-icons');
+                    if (iconElement) {
+                        iconElement.textContent = currentTheme === 'dark-mode' ? 'light_mode' : 'dark_mode';
+                    }
+                }
+                if (mobileSignOutBtn) mobileSignOutBtn.addEventListener('click', () => firebase.auth().signOut());
+
+
+                displayArea.appendChild(profileContainer);
+                console.log("DEBUG: Profile displayed.");
+            }
+
+
+            // --- CRUD Functions ---
+            async function sendCrudRequest(itemType, action, itemId, data = {}) {  
+                console.log(`DEBUG: sendCrudRequest called - Type: ${itemType}, Action: ${action}, ID: ${itemId}, Data:`, data);
+                const payload = {
+                    request_type: 'crud_action',
+                    item_type: itemType,
+                    action,
+                    item_id: itemId,
+                    data: data  
+                };
+                const response = await callBackendAPI(payload);
+                if (response?.status === 'success') {
+                    showToast(response.message, 'success');
+                    if (response.html_view_data) {
+                        console.log("DEBUG: html_view_data received in CRUD response. Updating views directly.");
+                        if (response.html_view_data.agenda) displayAgenda(response.html_view_data.agenda);
+                        if (response.html_view_data.projetos) displayProjects(response.html_view_data.projetos);
+                        // A view de templates de rotina só será recarregada se ela estiver ativa
+                        if (response.html_view_data.routines && elements.rotinasTemplatesViewContent?.classList.contains('active')) {
+                            displayRoutinesTemplates(response.html_view_data.routines);
+                        }
+                    } else {
+                        console.warn("DEBUG: No html_view_data in CRUD response. Falling back to loadViewData.");
+                        if (itemType === 'task') loadViewData('agenda');  
+                        if (itemType === 'project') loadViewData('projetos');  
+                        if (itemType === 'routine' && elements.rotinasTemplatesViewContent?.classList.contains('active')) {
+                             loadViewData('rotinasTemplatesViewContent'.replace('ViewContent', '')); // Load the templates view
+                        }
+                    }
+                    console.log(`DEBUG: CRUD ${action} ${itemType} successful.`);
+                } else if (response?.status === 'duplicate') {
+                    showToast(response.message, 'warning');
+                    console.warn(`DEBUG: CRUD ${action} ${itemType} duplicate.`);
+                } else {
+                    showToast(response?.message || `Erro ao executar ação de ${action}.`, 'error');
+                    console.error(`DEBUG: CRUD ${action} ${itemType} failed. Response:`, response);
+                }
+                return response;  
+            }
+
+            // --- Modal Functions ---
+            async function loadProjectForEdit(projectId) {
+                console.log("DEBUG: loadProjectForEdit called for ID:", projectId);
+                const projectsDataResponse = await callBackendAPI({ request_type: 'chat_and_view', view_request: 'projetos' });
+                const projectsArray = projectsDataResponse?.html_view_data?.projetos;
+
+                const project = projectsArray?.find(p => p.id === projectId);
+
+                if (!project) { showToast('Projeto não encontrado para edição.', 'error'); console.warn("DEBUG: Project not found for edit:", projectId); return; }
+                openEditProjectModal(project);
+            }
+
+            function openEditProjectModal(project = null) {  
+                console.log("DEBUG: openEditProjectModal called. Project to edit:", project);
+                currentEditProjectId = project ? project.id : null;
+
+                const editProjectName = elements.editProjectModal.querySelector('#editProjectName');
+                const editProjectDescription = elements.editProjectModal.querySelector('#editProjectDescription');
+                const editProjectStatus = elements.editProjectModal.querySelector('#editProjectStatus');
+                const editProjectDeadline = elements.editProjectModal.querySelector('#editProjectDeadline');
+                const editProjectMicrotasks = elements.editProjectModal.querySelector('#editProjectMicrotasks');
+                const addMicrotaskButtonLabelSpan = elements.editProjectModal.querySelector('#addMicrotaskButtonLabelSpan');
+                const editProjectCancelBtn = elements.editProjectModal.querySelector('#editProjectCancelBtn');
+                const saveProjectChangesBtn = elements.editProjectModal.querySelector('#saveProjectChangesBtn');
+
+                if (editProjectName) editProjectName.value = project?.name || '';
+                if (editProjectDescription) editProjectDescription.value = project?.description || '';
+                if (editProjectStatus) editProjectStatus.value = project?.status || 'open';  
+                if (editProjectDeadline) editProjectDeadline.value = project?.deadline ? new Date(project.deadline).toISOString().split('T')[0] : '';
+                
+                if (editProjectMicrotasks) editProjectMicrotasks.innerHTML = '';
+                project?.micro_tasks?.forEach(mt => addMicrotaskToModal(mt.description, mt.completed, mt.id));
+
+                if (addMicrotaskButtonLabelSpan) addMicrotaskButtonLabelSpan.textContent = i18nStrings.addMicrotaskButtonLabel;
+                if (editProjectCancelBtn) editProjectCancelBtn.textContent = i18nStrings.cancelButtonLabel;
+                if (saveProjectChangesBtn) saveProjectChangesBtn.textContent = i18nStrings.saveChangesButtonLabel;
+
+                openModal('editProjectModal');
+            }
+
+            function addMicrotaskToModal(description = '', completed = false, id = null) {
+                console.log("DEBUG: addMicrotaskToModal called.");
+                if (!elements.microtaskEditTemplate) { console.warn("DEBUG: Microtask template not found."); return; }
+                
+                const editProjectMicrotasks = elements.editProjectModal.querySelector('#editProjectMicrotasks');
+                if (!editProjectMicrotasks) { console.warn("DEBUG: editProjectMicrotasks container not found."); return; }
+
+                const item = elements.microtaskEditTemplate.content.cloneNode(true).firstElementChild;
+                item.dataset.id = id || String(uuidv4()); 
+                
+                const descriptionInput = item.querySelector('.edit-microtask-description');
+                const completedCheckbox = item.querySelector('.edit-microtask-completed');
+                const removeButton = item.querySelector('.remove-microtask-button');
+
+                if (descriptionInput) descriptionInput.value = escapeHTML(description);
+                if (completedCheckbox) completedCheckbox.checked = completed;
+                
+                if (removeButton) {
+                    removeButton.onclick = () => {
+                        console.log("DEBUG: Removing microtask item.");
+                        item.remove();  
+                    };  
+                } else {
+                    console.warn("DEBUG: Remove microtask button not found in template.");
+                }
+                
+                editProjectMicrotasks.appendChild(item);
+            }
+
+            async function saveProjectChanges() {
+                console.log("DEBUG: saveProjectChanges called.");
+                const editProjectName = elements.editProjectModal.querySelector('#editProjectName');
+                const editProjectDescription = elements.editProjectModal.querySelector('#editProjectDescription');
+                const editProjectStatus = elements.editProjectModal.querySelector('#editProjectStatus');
+                const editProjectDeadline = elements.editProjectModal.querySelector('#editProjectDeadline');
+                const editProjectMicrotasks = elements.editProjectModal.querySelector('#editProjectMicrotasks');
+
+                if (!editProjectName || !editProjectName.value.trim()) {  
+                    showToast('O nome do projeto é obrigatório.', 'warning');  
+                    console.warn("DEBUG: Project name is empty.");
+                    return;  
+                }
+
+                const updates = {
+                    name: editProjectName.value.trim(),
+                    description: editProjectDescription.value.trim(),
+                    status: editProjectStatus.value,  
+                    deadline: editProjectDeadline.value || null,
+                    micro_tasks: Array.from(editProjectMicrotasks.querySelectorAll('.modal-microtask-item')).map(item => ({
+                        id: item.dataset.id, 
+                        description: item.querySelector('.edit-microtask-description').value.trim(),
+                        completed: item.querySelector('.edit-microtask-completed').checked
+                    })).filter(mt => mt.description)  
+                };
+                
+                const action = currentEditProjectId ? 'update' : 'create';
+                console.log(`DEBUG: Saving project - Action: ${action}, ID: ${currentEditProjectId}, Updates:`, updates);
+                const response = await sendCrudRequest('project', action, currentEditProjectId, updates);
+                if (response?.status === 'success') {
+                    closeModal('editProjectModal');
+                    console.log("DEBUG: Project changes saved successfully.");
+                } else {
+                    console.error("DEBUG: Failed to save project changes:", response);
+                }
+            }
+
+            function openAddTaskModal() {
+                console.log("DEBUG: openAddTaskModal called.");
+                const newTaskDescription = elements.addTaskModal.querySelector('#newTaskDescription');
+                const newTaskDate = elements.addTaskModal.querySelector('#newTaskDate');
+                const newTaskTime = elements.addTaskModal.querySelector('#newTaskTime');
+                const newTaskDuration = elements.addTaskModal.querySelector('#newTaskDuration');
+                const addTaskCancelBtn = elements.addTaskModal.querySelector('#addTaskCancelBtn');
+                const saveNewTaskBtn = elements.addTaskModal.querySelector('#saveNewTaskBtn');
+
+                if (newTaskDescription) newTaskDescription.value = '';
+                if (newTaskDate) newTaskDate.value = new Date().toISOString().split('T')[0];
+                if (newTaskTime) newTaskTime.value = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                if (newTaskDuration) newTaskDuration.value = 60;
+                
+                if (addTaskCancelBtn) addTaskCancelBtn.textContent = i18nStrings.cancelButtonLabel;
+                if (saveNewTaskBtn) saveNewTaskBtn.textContent = i18nStrings.saveTaskButtonLabel;
+
+                openModal('addTaskModal');
+            }
+
+            async function saveNewTask() {
+                console.log("DEBUG: saveNewTask called.");
+                const newTaskDescription = elements.addTaskModal.querySelector('#newTaskDescription');
+                const newTaskDate = elements.addTaskModal.querySelector('#newTaskDate');
+                const newTaskTime = elements.addTaskModal.querySelector('#newTaskTime');
+                const newTaskDuration = elements.addTaskModal.querySelector('#newTaskDuration');
+
+                const description = newTaskDescription.value.trim();
+                const date = newTaskDate.value;
+                const time = newTaskTime.value;
+                const duration = parseInt(newTaskDuration.value);
+
+                if (!description || !date || !time) { showToast(i18nStrings.taskDescriptionAndDateRequired, 'warning'); console.warn("DEBUG: Task description, date or time is empty."); return; }
+                
+                const response = await sendCrudRequest('task', 'create', null, { description: description, date: date, time: time, duration_minutes: duration });
+                
+                if (response?.status === 'success') {
+                    showToast(i18nStrings.taskAddSuccess, 'success');
+                    closeModal('addTaskModal');
+                    if (newTaskDescription) newTaskDescription.value = '';
+                    if (newTaskDate) newTaskDate.value = '';
+                    if (newTaskTime) newTaskTime.value = '';
+                    if (newTaskDuration) newTaskDuration.value = '';
+                    console.log("DEBUG: New task saved successfully via direct CRUD.");
+                } else {
+                    console.error("DEBUG: Failed to save new task:", response);
+                }
+            }
+
+            // Funções para Modais de Rotina
+            async function loadRoutineForEdit(routineId) {
+                console.log("DEBUG: loadRoutineForEdit called for ID:", routineId);
+                const routinesDataResponse = await callBackendAPI({ request_type: 'chat_and_view', view_request: 'rotinasTemplatesViewContent'.replace('ViewContent', '') }); 
+                const routinesArray = routinesDataResponse?.html_view_data?.routines;
+
+                const routine = routinesArray?.find(r => r.id === routineId);
+
+                if (!routine) { showToast('Rotina não encontrada para edição.', 'error'); console.warn("DEBUG: Routine not found for edit:", routineId); return; }
+                openEditRoutineModal(routine);
+            }
+
+            function openEditRoutineModal(routine = null) {
+                console.log("DEBUG: openEditRoutineModal called. Routine to edit:", routine);
+                currentEditRoutineId = routine ? routine.id : null;
+
+                const routineNameInput = elements.editRoutineModal.querySelector('#routineName');
+                const routineDescriptionInput = elements.editRoutineModal.querySelector('#routineDescription');
+                const routineDaysOfWeekCheckboxes = elements.editRoutineModal.querySelectorAll('#routineDaysOfWeek input[type="checkbox"]');
+                const routineRecurrenceRuleInput = elements.editRoutineModal.querySelector('#routineRecurrenceRule'); // NEW REFERENCE
+                const routineItemsContainer = elements.editRoutineModal.querySelector('#routineItemsContainer');
+                const routineCancelBtn = elements.editRoutineModal.querySelector('#routineCancelBtn');
+                const saveRoutineBtn = elements.editRoutineModal.querySelector('#saveRoutineBtn');
+                const addRoutineItemModalBtn = elements.editRoutineModal.querySelector('#addRoutineItemModalBtn');
+
+                if (routineNameInput) routineNameInput.value = routine?.name || '';
+                if (routineDescriptionInput) routineDescriptionInput.value = routine?.description || '';
+                if (routineRecurrenceRuleInput) routineRecurrenceRuleInput.value = routine?.recurrence_rule || ''; // NEW: Populate recurrence rule
+                
+                // Reset e preenche os dias da semana
+                if (routineDaysOfWeekCheckboxes) {
+                    routineDaysOfWeekCheckboxes.forEach(checkbox => {
+                        checkbox.checked = false; 
+                    });
+                    if (routine?.applies_to_days) {
+                        routine?.applies_to_days.forEach(day => {
+                            const checkbox = elements.editRoutineModal.querySelector(`input[data-day="${day}"]`);
+                            if (checkbox) checkbox.checked = true;
+                        });
+                    }
+                }
+
+                if (routineItemsContainer) routineItemsContainer.innerHTML = '';
+                routine?.schedule?.forEach(item => addRoutineItemToModal(item));
+
+                if (routineCancelBtn) routineCancelBtn.textContent = i18nStrings.cancelButtonLabel;
+                if (saveRoutineBtn) saveRoutineBtn.textContent = i18nStrings.saveRoutineButtonLabel;
+                if (addRoutineItemModalBtn) addRoutineItemModalBtn.textContent = i18nStrings.addRoutineItemButtonLabel;
+
+                openModal('editRoutineModal');
+            }
+
+            function addRoutineItemToModal(item = null) {
+                console.log("DEBUG: addRoutineItemToModal called with item:", item);
+                if (!elements.routineItemEditTemplate) { console.warn("DEBUG: Routine item template not found."); return; }
+                
+                const routineItemsContainer = elements.editRoutineModal.querySelector('#routineItemsContainer');
+                if (!routineItemsContainer) { console.warn("DEBUG: routineItemsContainer not found."); return; }
+
+                const newItem = elements.routineItemEditTemplate.content.cloneNode(true).firstElementChild;
+                newItem.dataset.id = item?.id || String(uuidv4());
+                
+                const timeInput = newItem.querySelector('.edit-routine-item-time');
+                const durationInput = newItem.querySelector('.edit-routine-item-duration');
+                const descriptionInput = newItem.querySelector('.edit-routine-item-description');
+                const removeButton = newItem.querySelector('.remove-routine-item-button');
+
+                if (timeInput) timeInput.value = item?.time || '09:00';
+                if (durationInput) durationInput.value = item?.duration_minutes || 60;
+                if (descriptionInput) descriptionInput.value = escapeHTML(item?.description || '');
+                
+                if (removeButton) {
+                    removeButton.onclick = () => {
+                        console.log("DEBUG: Removing routine item.");
+                        newItem.remove();
+                    };
+                } else {
+                    console.warn("DEBUG: Remove routine item button not found in template.");
+                }
+                
+                routineItemsContainer.appendChild(newItem);
+            }
+
+            async function saveRoutine() {
+                console.log("DEBUG: saveRoutine called.");
+                const routineNameInput = elements.editRoutineModal.querySelector('#routineName');
+                const routineDescriptionInput = elements.editRoutineModal.querySelector('#routineDescription');
+                const routineDaysOfWeekCheckboxes = elements.editRoutineModal.querySelectorAll('#routineDaysOfWeek input[type="checkbox"]');
+                const routineRecurrenceRuleInput = elements.editRoutineModal.querySelector('#routineRecurrenceRule'); // NEW REFERENCE
+                const routineItemsContainer = elements.editRoutineModal.querySelector('#routineItemsContainer');
+
+                if (!routineNameInput || !routineNameInput.value.trim()) {
+                    showToast(i18nStrings.routineNameRequired, 'warning');
+                    console.warn("DEBUG: Routine name is empty.");
+                    return;
+                }
+
+                const selectedDays = Array.from(routineDaysOfWeekCheckboxes)
+                                        .filter(cb => cb.checked)
+                                        .map(cb => cb.dataset.day);
+
+                const routineSchedule = [];
+                const routineItems = Array.from(routineItemsContainer.querySelectorAll('.modal-routine-item'));
+                for (const itemElement of routineItems) {
+                    const time = itemElement.querySelector('.edit-routine-item-time').value;
+                    const duration = parseInt(itemElement.querySelector('.edit-routine-item-duration').value);
+                    const description = itemElement.querySelector('.edit-routine-item-description').value.trim();
+
+                    if (!time || isNaN(duration) || duration < 0 || !description) {
+                        showToast(i18nStrings.routineItemDescriptionTimeRequired, 'warning');
+                        console.warn("DEBUG: Missing or invalid routine item details.");
+                        return;
+                    }
+                    routineSchedule.push({
+                        id: itemElement.dataset.id, 
+                        time,
+                        duration_minutes: duration,
+                        description
+                    });
+                }
+
+                const updates = {
+                    name: routineNameInput.value.trim(),
+                    description: routineDescriptionInput.value.trim(),
+                    applies_to_days: selectedDays,
+                    recurrence_rule: routineRecurrenceRuleInput.value.trim() || null, // NEW: Include recurrence rule
+                    schedule: routineSchedule
+                };
+                
+                const action = currentEditRoutineId ? 'update' : 'create';
+                const routineIdToSave = currentEditRoutineId || String(uuidv4()); 
+
+                console.log(`DEBUG: Saving routine - Action: ${action}, ID: ${routineIdToSave}, Updates:`, updates);
+                const response = await sendCrudRequest('routine', action, routineIdToSave, updates);
+                if (response?.status === 'success') {
+                    showToast(i18nStrings.routineAddSuccess, 'success');
+                    closeModal('editRoutineModal');
+                    console.log("DEBUG: Routine changes saved successfully.");
+                } else {
+                    showToast(response?.message || i18nStrings.routineCreateError, 'error');
+                    console.error("DEBUG: Failed to save routine changes:", response);
+                }
+            }
+
+
+            function uuidv4() {
+                return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                    return v.toString(16);
+                });
+            }
+
+
+            // MODIFICADO: showConfirmationModal para suportar labels de botões customizadas e o terceiro botão
+            function showConfirmationModal(message, confirmCallback, declineCallback = null, secondaryConfirmCallback = null, 
+                                           inputPrompt = false, confirmLabel = i18nStrings.yesButtonLabel, declineLabel = i18nStrings.noButtonLabel, secondaryLabel = null) {
+                console.log("DEBUG: showConfirmationModal called with inputPrompt:", inputPrompt, "confirmLabel:", confirmLabel, "declineLabel:", declineLabel, "secondaryLabel:", secondaryLabel);
+                const confirmationMessageElement = elements.confirmationModal.querySelector('#confirmationMessage');
+                const confirmNoBtn = elements.confirmationModal.querySelector('#confirmNoBtn');
+                const confirmYesBtn = elements.confirmationModal.querySelector('#confirmYesBtn');
+                
+                // Remove qualquer input ou botão secundário anterior
+                const existingInputField = elements.confirmationModal.querySelector('#confirmationInputField');
+                if (existingInputField) existingInputField.remove();
+
+                const existingSecondaryButton = elements.confirmationModal.querySelector('.confirm-secondary');
+                if (existingSecondaryButton) existingSecondaryButton.remove();
+
+                // Limpa conteúdo anterior e adiciona a mensagem
+                confirmationMessageElement.innerHTML = '';
+                const p = document.createElement('p');
+                p.innerHTML = message; 
+                confirmationMessageElement.appendChild(p);
+
+                // Adiciona campo de input se inputPrompt for verdadeiro
+                let inputField = null;
+                if (inputPrompt) {
+                    inputField = document.createElement('input');
+                    inputField.type = 'text';
+                    inputField.id = 'confirmationInputField';
+                    inputField.placeholder = 'Digite aqui a data (ex: hoje, amanhã, 2024-08-15)...';
+                    inputField.className = 'modal-input-text';
+                    confirmationMessageElement.appendChild(inputField);
+                    confirmYesBtn._callback = () => confirmCallback(inputField.value.trim());
+                    console.log("DEBUG: Confirmation modal with input activated.");
+                } else {
+                    confirmYesBtn._callback = confirmCallback;
+                }
+                
+                confirmNoBtn._callback = declineCallback || (() => console.log("DEBUG: Confirmation declined (default)."));
+
+                // Configura os labels dos botões
+                confirmYesBtn.textContent = confirmLabel;
+                confirmNoBtn.textContent = declineLabel;
+
+                // Se houver um terceiro callback, cria e adiciona o botão
+                if (secondaryConfirmCallback && secondaryLabel) {
+                    const secondaryButton = document.createElement('button');
+                    secondaryButton.textContent = secondaryLabel; 
+                    secondaryButton.className = "button-secondary confirm-secondary"; 
+                    secondaryButton._callback = secondaryConfirmCallback; // Assign the callback
+                    
+                    const buttonGroup = elements.confirmationModal.querySelector('.button-group');
+                    if (buttonGroup) {
+                        buttonGroup.appendChild(secondaryButton); // Add after confirm/cancel
+                    }
+                }
+
+                openModal('confirmationModal');
+            }
+
+
+            async function handleConfirmationResponse(responseType) {
+                console.log(`DEBUG: User responded: ${responseType}`);
+                if (elements.confirmationArea) {
+                    elements.confirmationArea.style.display = 'none';  
+                }
+                if (elements.messageInput) elements.messageInput.disabled = false;
+                if (elements.sendMessageBtn) elements.sendMessageBtn.disabled = false;
+                if (elements.fileUploadBtn) elements.fileUploadBtn.disabled = false;
+
+                if (elements.inputWrapper) {  
+                    elements.inputWrapper.style.display = 'flex';
+                } else {
+                    console.warn("DEBUG: inputWrapper not found when trying to hide in handleConfirmationResponse.");
+                }
+
+                let confirmationMessage;
+                if (responseType === 'yes') {
+                    confirmationMessage = "Sim, por favor.";
+                } else {
+                    confirmationMessage = "Não, cancelar.";
+                }
+
+                await handleSendMessage({ forcedMessage: confirmationMessage });
+            }
+
+            // --- Chat and Attachment Functions ---
+            function showLoading() {
+                console.log("DEBUG: showLoading called (chat).");
+                if (elements.loadingIndicator) elements.loadingIndicator.style.display = 'flex';
+                isSendingMessage = true;
+                if (elements.messageInput) elements.messageInput.disabled = true;  
+                if (elements.sendMessageBtn) elements.sendMessageBtn.disabled = true;
+                if (elements.fileUploadBtn) elements.fileUploadBtn.disabled = true;
+            }
+
+            function hideLoading() {
+                console.log("DEBUG: hideLoading called (chat).");
+                if (elements.loadingIndicator) elements.loadingIndicator.style.display = 'none';
+                isSendingMessage = false;
+                if (elements.messageInput) elements.messageInput.disabled = false;
+                if (elements.sendMessageBtn) elements.sendMessageBtn.disabled = false;
+                if (elements.fileUploadBtn) elements.fileUploadBtn.disabled = false;
+            }
+
+            async function handleSendMessage(options = {}) {
+                console.log("DEBUG: handleSendMessage called.");
+                if (!elements.messageInput) { console.warn("DEBUG: Message input element not found."); return; }
+                
+                let message = (options.forcedMessage || elements.messageInput.value.trim()).replace(/^"|"$/g, '').replace(/^'|'$/g, ''); 
+
+                if (!message && !currentFileUpload) { console.warn("DEBUG: Message or file is empty, not sending."); return; }
+
+                renderMessage(message || (currentFileUpload ? `[Arquivo: ${currentFileUpload.filename}]` : 'Mensagem vazia'), true);
+                
+                const payload = { request_type: 'chat_and_view', message, uploaded_file_data: currentFileUpload };
+                
+                elements.messageInput.value = '';
+                elements.messageInput.style.height = 'auto'; 
+                clearAttachment();
+                updateSuggestedSections(); 
+
+                const data = await callBackendAPI(payload);
+
+                if (data?.status === 'success') {
+                    if (elements.inputWrapper) { elements.inputWrapper.style.display = 'flex'; } 
+                    if (elements.confirmationArea) { elements.confirmationArea.style.display = 'none'; } 
+
+                    if (data.html_view_data) {
+                        console.log("DEBUG: html_view_data received in main response. Updating views directly.");
+                        if (data.html_view_data.agenda) {
+                            displayAgenda(data.html_view_data.agenda);
+                            showToast(`Agenda atualizada!`, 'success'); 
+                        }
+                        if (data.html_view_data.projetos) {
+                            displayProjects(data.html_view_data.projetos);
+                            showToast(`Projetos atualizados!`, 'success'); 
+                        }
+                        // A view de templates de rotina só será recarregada se ela estiver ativa
+                        if (data.html_view_data.routines && elements.rotinasTemplatesViewContent?.classList.contains('active')) {
+                            displayRoutinesTemplates(data.html_view_data.routines);
+                            showToast(`Templates de Rotina atualizados!`, 'success');
+                        }
+                        if (data.html_view_data.long_term_memory) { 
+                            displayLongTermMemory(data.html_view_data.long_term_memory);
+                            showToast(`Perfil atualizado!`, 'success');
+                        }
+                    } 
+                    
+                    if (data.debug_info?.crud_result_status === 'success') { 
+                        const intent = data.debug_info?.intent_detected;
+                        if (intent === 'task' || intent === 'project' || intent === 'routine' || intent === 'google_calendar' || intent === 'configuracao_perfil') {
+                            showToast(data.message || `${intent} atualizado com sucesso!`, 'success');
+                        }
+                    }
+
+                    // Se a resposta do backend incluir `google_auth_redirect_url`, redirecionar
+                    if (data.google_auth_redirect_url) {
+                        console.log("DEBUG: Redirect URL received for Google Auth. Redirecting...");
+                        window.location.href = data.google_auth_redirect_url;
+                        return; // Sair da função para evitar processamento adicional da resposta
+                    }
+
+                    renderMessage(data.response, false); 
+                    
+                    if (data.suggested_tasks || data.suggested_projects) {
+                        updateSuggestedSections(data.suggested_tasks, data.suggested_projects);
+                    }
+                    
+                    const activeViewElement = document.querySelector('.view-content.active');
+                    // Recarregar a view ativa (se não for chat) apenas se o html_view_data não veio E não for redirecionamento
+                    if (activeViewElement && activeViewElement.id !== 'chatViewContent' && !data.html_view_data && !data.google_auth_redirect_url) {
+                        console.log("DEBUG: Reloading current non-chat view (fallback):", activeViewElement.id.replace('ViewContent', ''));
+                        // Mudar o nome da view para 'agenda' ou 'rotinasTemplatesViewContent'
+                        let viewToLoad = activeViewElement.id.replace('ViewContent', '');
+                        if (viewToLoad === 'rotinas') viewToLoad = 'rotinasTemplatesViewContent'.replace('ViewContent', ''); 
+                        loadViewData(viewToLoad);
+                    }
+
+                } else if (data.status === 'awaiting_confirmation') {
+                    if (elements.inputWrapper) { elements.inputWrapper.style.display = 'none'; } 
+                    if (elements.confirmationArea) { elements.confirmationArea.style.display = 'flex'; } 
+                    elements.confirmationText.innerHTML = parseMarkdownToHtml(data.response); 
+                    renderMessage(data.response, false); 
+                    console.log("DEBUG: Awaiting user confirmation for action.");
+                    showToast("Confirmação necessária para a ação!", 'info', 3000);
+
+                } else {
+                    if (elements.inputWrapper) { elements.inputWrapper.style.display = 'flex'; } 
+                    if (elements.confirmationArea) { elements.confirmationArea.style.display = 'none'; } 
+                    renderMessage(data?.response || "Desculpe, não consegui processar sua solicitação. Por favor, tente novamente.", false);
+                    showToast(data?.response || `Erro ao processar sua solicitação.`, 'error');
+                }
+            }
+
+            function handleFileAttachment(event) {
+                if (!elements.fileInput || !elements.fileNameDisplay || !elements.attachmentInfoDiv || !elements.fileUploadBtn) {
+                    console.warn("DEBUG: File attachment elements not found."); return;
+                }
+                const file = event.target.files[0];
+                if (!file) { console.warn("DEBUG: No file selected."); return; }
+
+                if (file.size > config.MAX_FILE_SIZE) {
+                    showToast(i18nStrings.fileTooLarge, 'error');
+                    elements.fileInput.value = '';  
+                    console.warn("DEBUG: File too large.");
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = e => {
+                    currentFileUpload = {
+                        base64: e.target.result.split(',')[1],  
+                        filename: file.name,
+                        mimetype: file.type
+                    };
+                    elements.fileNameDisplay.textContent = file.name.length > 20 ? file.name.substring(0, 17) + '...' + file.name.slice(-3) : file.name;
+                    elements.attachmentInfoDiv.style.display = 'flex';  
+                    elements.fileUploadBtn.style.display = 'none';  
+                    console.log("DEBUG: File attached:", file.name);
+                };
+                reader.readAsDataURL(file);
+            }
+
+            function clearAttachment() {
+                if (!elements.fileInput || !elements.fileNameDisplay || !elements.attachmentInfoDiv || !elements.fileUploadBtn) {
+                    console.warn("DEBUG: Clear attachment elements not found."); return;
+                }
+                currentFileUpload = null;
+                elements.fileInput.value = '';  
+                elements.fileNameDisplay.textContent = '';
+                elements.attachmentInfoDiv.style.display = 'none';
+                elements.fileUploadBtn.style.display = 'inline-flex';
+                console.log("DEBUG: Attachment cleared.");
+            }
+
+            // --- Theme and Debug Functions ---
+            function toggleTheme() {
+                currentTheme = currentTheme === 'light-mode' ? 'dark-mode' : 'light-mode';
+                document.body.className = currentTheme;
+                localStorage.setItem('theme', currentTheme);
+                
+                // Atualiza o ícone do botão de tema estático da sidebar
+                if (elements.themeToggleBtn) {
+                    const desktopIconElement = elements.themeToggleBtn.querySelector('.material-icons');
+                    if (desktopIconElement) {
+                        desktopIconElement.textContent = currentTheme === 'dark-mode' ? 'light_mode' : 'dark_mode';
+                    }
+                }
+                // Os botões móveis são tratados dentro de displayLongTermMemory()
+                console.log("DEBUG: Theme toggled to:", currentTheme);
+            }
+
+            function applyInitialTheme() {
+                document.body.className = currentTheme;
+                if (elements.themeToggleBtn) { // Botão estático da sidebar
+                    const iconElement = elements.themeToggleBtn.querySelector('.material-icons');
+                    if (iconElement) {
+                        iconElement.textContent = currentTheme === 'dark-mode' ? 'light_mode' : 'dark_mode';
+                    }
+                }
+                // Botões móveis são atualizados quando displayLongTermMemory() é chamado
+                console.log("DEBUG: Initial theme applied:", currentTheme);
+            }
+
+            function toggleDebugMode(newState, isInitial = false) {
+                console.log("DEBUG: toggleDebugMode called, but functionality is removed from UI.");
+            }
+
+            // --- AUTHENTICATION FUNCTIONS ---
+            function disableAuthButtons(state) {
+                console.log("DEBUG: disableAuthButtons called with state:", state);
+                elements.emailInput?.toggleAttribute('disabled', state);
+                elements.passwordInput?.toggleAttribute('disabled', state);
+                elements.emailLoginBtn?.toggleAttribute('disabled', state);
+                elements.emailSignupBtn?.toggleAttribute('disabled', state);
+                elements.googleLoginBtn?.toggleAttribute('disabled', state);
+            }
+            async function handleEmailPasswordLogin() {
+                console.log("DEBUG: handleEmailPasswordLogin called.");
+                const email = elements.emailInput.value;
+                const password = elements.passwordInput.value;
+                if (!email || !password) { displayAuthError(i18nStrings.authMissingFields); return; }
+                disableAuthButtons(true);
+                showGlobalLoader();
+                try {  
+                    await firebase.auth().signInWithEmailAndPassword(email, password);  
+                    console.log("DEBUG: Email/Password login successful.");
+                    displayAuthError('');  
+                }  
+                catch (error) {  
+                    console.error("DEBUG: Email/Password login error:", error);  
+                    displayAuthError(error.message);  
+                    showToast(`${i18nStrings.loginError} ${error.message}`, 'error');  
+                }  
+                finally {  
+                    disableAuthButtons(false);  
+                    hideGlobalLoader();  
+                }
+            }
+
+            async function handleEmailPasswordSignup() {
+                console.log("DEBUG: handleEmailPasswordSignup called.");
+                const email = elements.emailInput.value;
+                const password = elements.passwordInput.value;
+                if (!email || !password) { displayAuthError(i18nStrings.authMissingFields); return; }
+                disableAuthButtons(true);
+                showGlobalLoader();
+                try {  
+                    await firebase.auth().createUserWithEmailAndPassword(email, password);  
+                    console.log("DEBUG: Email/Password signup successful.");
+                    displayAuthError('');  
+                }  
+                catch (error) {  
+                    console.error("DEBUG: Email/Password signup error:", error);  
+                    displayAuthError(error.message);  
+                    showToast(`${i18nStrings.signupError} ${error.message}`, 'error');  
+                }  
+                finally {  
+                    disableAuthButtons(false);  
+                    hideGlobalLoader();  
+                }
+            }
+
+            async function handleGoogleLogin() {
+                console.log("DEBUG: handleGoogleLogin called.");
+                disableAuthButtons(true);
+                showGlobalLoader();
+                try {
+                    const provider = new firebase.auth.GoogleAuthProvider();
+                    await firebase.auth().signInWithPopup(provider);
+                    console.log("DEBUG: Google login successful.");
+                    displayAuthError('');  
+                } catch (error) {  
+                    console.error("DEBUG: Google login error:", error);  
+                    displayAuthError(error.message);  
+                    showToast(`${i18nStrings.googleLoginError} ${error.message}`, 'error');  
+                }  
+                finally {  
+                    disableAuthButtons(false);  
+                    hideGlobalLoader();  
+                }
+            }
+
+            // Funções para Google Calendar via Frontend
+            async function handleConnectGoogleCalendar() {
+                console.log("DEBUG: handleConnectGoogleCalendar called.");
+                if (!currentUser) { showToast(i18nStrings.unauthenticated, 'error'); return; }
+                if (!config.CLOUD_FUNCTION_AUTH_URL) { showToast("URL de autenticação Google não configurada.", 'error'); return; }
+
+                showGlobalLoader();
+                try {
+                    // Send request with direct action type
+                    const payload = {
+                        user_id: currentUser.uid,
+                        request_type: 'google_calendar_action', 
+                        action: 'connect_calendar'
+                    };
+                    const response = await callBackendAPI(payload);
+
+                    if (response.status === 'success' && response.google_auth_redirect_url) {
+                        showToast("Redirecionando para autenticação Google...", 'info', 3000);
+                        window.location.href = response.google_auth_redirect_url;
+                    } else {
+                        showToast(response?.message || i18nStrings.connectGoogleCalendarError, 'error');
+                        console.error("DEBUG: Failed to get Google auth URL or unexpected response:", response);
+                    }
+                } catch (error) {
+                    showToast(i18nStrings.connectGoogleCalendarError + " " + error.message, 'error');
+                    console.error("DEBUG: Error in handleConnectGoogleCalendar:", error);
+                } finally {
+                    // If redirection is happening, do not hide the loader here
+                    if (!window.location.href.includes(config.CLOUD_FUNCTION_AUTH_URL)) {
+                        hideGlobalLoader();
+                    }
+                }
+            }
+
+            function handleGoogleOAuthCallback() {
+                const urlParams = new URLSearchParams(window.location.search);
+                const authStatus = urlParams.get('auth_status');
+                const message = urlParams.get('message');
+                const isAuthCallback = urlParams.has('code') || urlParams.has('error') || urlParams.has('auth_status');
+
+                if (isAuthCallback) {
+                    console.log("DEBUG: Detected Google OAuth callback in URL. Status:", authStatus, "Message:", message);
+                    history.replaceState({}, document.title, window.location.pathname);
+
+                    if (authStatus === 'success') {
+                        showToast(i18nStrings.syncGoogleCalendarSuccess, 'success', 5000);
+                        // Refresh the profile view to show connected status and buttons
+                        // Aqui, recarregar a vista de Perfil será tratado pela chamada a `loadViewData`
+                        // que displayLongTermMemory() fará a partir dos dados do backend.
+                        // O importante é garantir que `currentUser` esteja disponível.
+                        if (currentUser && elements.longTermMemoryViewContent?.classList.contains('active')) {
+                             loadViewData('longTermMemory');
+                        }
+                    } else if (authStatus === 'error') {
+                        showToast(message || i18nStrings.connectGoogleCalendarError, 'error', 7000);
+                    }
+                }
+            }
+
+            async function handleSyncGoogleCalendar() {
+                console.log("DEBUG: handleSyncGoogleCalendar called.");
+                if (!currentUser) { showToast(i18nStrings.unauthenticated, 'error'); return; }
+
+                showGlobalLoader();
+                try {
+                    // Send request with direct action type and data for period
+                    const today = new Date();
+                    const next7Days = new Date();
+                    next7Days.setDate(today.getDate() + 7);
+
+                    const payload = {
+                        user_id: currentUser.uid,
+                        request_type: 'google_calendar_action', // Direct action type
+                        action: 'sync_calendar',
+                        data: {
+                            start_date: today.toISOString().split('T')[0], // YYYY-MM-DD
+                            end_date: next7Days.toISOString().split('T')[0] // YYYY-MM-DD
+                        }
+                    };
+                    const response = await callBackendAPI(payload);
+
+                    if (response?.status === 'success') {
+                        showToast(response.response || i18nStrings.syncGoogleCalendarSuccess, 'success');
+                        if (response.html_view_data?.agenda) {
+                            displayAgenda(response.html_view_data.agenda);
+                        }
+                    } else if (response?.status === 'info' && response.message.includes("conectar sua conta")) {
+                        showToast(response.response, 'info', 5000);
+                        // Potentially trigger connect flow if not connected
+                    } else {
+                        showToast(response?.response || i18nStrings.syncGoogleCalendarError, 'error');
+                    }
+                } catch (error) {
+                    showToast(i18nStrings.syncGoogleCalendarError + " " + error.message, 'error');
+                    console.error("DEBUG: Error in handleSyncGoogleCalendar:", error);
+                } finally {
+                    hideGlobalLoader();
+                }
+            }
+
+            async function handleDisconnectGoogleCalendar() {
+                console.log("DEBUG: handleDisconnectGoogleCalendar called.");
+                if (!currentUser) { showToast(i18nStrings.unauthenticated, 'error'); return; }
+
+                showConfirmationModal(i18nStrings.disconnectGoogleCalendarConfirm, async () => {
+                    showGlobalLoader();
+                    try {
+                        // Send request with direct action type
+                        const payload = {
+                            user_id: currentUser.uid,
+                            request_type: 'google_calendar_action', // Direct action type
+                            action: 'disconnect_calendar'
+                        };
+                        const response = await callBackendAPI(payload);
+                        if (response?.status === 'success') {
+                            showToast(response.response || i18nStrings.disconnectGoogleCalendarSuccess, 'success');
+                            loadViewData('longTermMemory'); // Reload profile to update status/buttons
+                        } else {
+                            showToast(response?.response || i18nStrings.disconnectGoogleCalendarError, 'error');
+                        }
+                    } catch (error) {
+                        showToast(i18nStrings.disconnectGoogleCalendarError + " " + error.message, 'error');
+                        console.error("DEBUG: Error in handleDisconnectGoogleCalendar:", error);
+                    } finally {
+                        hideGlobalLoader();
+                    }
+                });
+            }
+
+            function setupAuth() {
+                console.log("DEBUG: setupAuth started. Setting up onAuthStateChanged listener.");
+                const authSection = elements.authSection;
+                const mainContentArea = elements.mainContentArea;
+                const sidebarMenu = elements.sidebarMenu;
+                const eixaIconFab = elements.eixaIconFab; 
+
+                // Verificação de elementos essenciais estáticos
+                if (!authSection || !mainContentArea || !sidebarMenu || !eixaIconFab) {
+                    console.error("DEBUG: CRITICAL ERROR: Essential static DOM elements (authSection, mainContentArea, sidebarMenu, eixaIconFab) not found during setupAuth. Check HTML IDs.");
+                    showToast("Erro ao iniciar a aplicação: Elementos de interface essenciais não encontrados.", 'error', 15000);
+                    return;
+                }
+
+                firebase.auth().onAuthStateChanged(user => {
+                    console.log("DEBUG: onAuthStateChanged callback fired. User object:", user);
+                    hideGlobalLoader(); // Esconde o loader global após o Firebase responder
+
+                    const isMobile = window.innerWidth <= 768;
+                    if (isMobile) {
+                        document.body.classList.toggle('auth-active', !user);
+                    }
+
+                    if (user) {
+                        console.log("DEBUG: User is LOGGED IN. Displaying main app UI.");
+                        currentUser = user;
+                        displayAuthError(''); 
+
+                        // Esconde tela de autenticação
+                        authSection.classList.remove('active'); 
+                        // Mostra elementos principais da UI
+                        mainContentArea.style.display = 'flex'; 
+                        sidebarMenu.style.display = 'flex'; 
+                        eixaIconFab.style.display = 'flex'; 
+
+                        // Monta a UI principal do aplicativo (chat, agenda, etc.)
+                        initializeAppUIAndDisplay(); 
+                        // Inicia o relógio
+                        updateClockDisplay();
+                    } else {
+                        console.log("DEBUG: User is NOT authenticated. Showing auth screen.");
+                        currentUser = null;
+
+                        // Esconde elementos principais da UI
+                        mainContentArea.style.display = 'none'; 
+                        sidebarMenu.style.display = 'none'; 
+                        eixaIconFab.style.display = 'none'; 
+                        // Mostra tela de autenticação
+                        authSection.classList.add('active'); 
+
+                        // Limpa o conteúdo da mainContentArea (para um estado limpo no próximo login)
+                        mainContentArea.innerHTML = ''; 
+
+                        // Limpa as referências dos elementos dinâmicos do objeto `elements`
+                        // para evitar que referências antigas sejam mantidas
+                        Object.assign(elements, {
+                            chatViewContent: null, chatDisplay: null, messageInput: null, sendMessageBtn: null,
+                            fileInput: null, fileUploadBtn: null, attachmentIcon: null, attachmentClearIcon: null,
+                            attachmentInfoDiv: null, fileNameDisplay: null, loadingIndicator: null, chatAiThinkingSrOnly: null,
+                            suggestedTasksContainer: null, suggestedTasksList: null, suggestedProjectsContainer: null,
+                            suggestedProjectsCards: null, suggestedTasksTitleSpan: null, suggestedProjectsTitleSpan: null,
+                            confirmationArea: null, confirmationText: null, confirmYesBtnChat: null, confirmNoBtnChat: null,
+                            agendaViewContent: null, agendaDisplay: null, openAddTaskModalBtn: null, 
+                            openAddRoutineModalBtn: null, syncGoogleCalendarBtnAgenda: null, 
+                            rotinasTemplatesViewContent: null, rotinasDisplay: null, openAddRoutineModalBtnSecondary: null, 
+                            projetosViewContent: null, projetosDisplay: null, openAddProjectModalBtn: null, 
+                            emotionalMemoriesViewContent: null, emotionalMemoriesDisplay: null,
+                            longTermMemoryViewContent: null, longTermMemoryDisplay: null,
+                            viewContents: null, 
+                            inputWrapper: null,
+                            // Note: Google Calendar/Mobile settings buttons are handled dynamically within displayLongTermMemory's scope
+                            // So, they are not global `elements.ID_OF_BUTTON` properties, and don't need clearing here.
+                        });
+
+                        // Para o relógio
+                        if (window.clockInterval) {
+                            clearInterval(window.clockInterval);
+                            window.clockInterval = null;
+                        }
+                        if (elements.currentDateTimeDisplay) {
+                            elements.currentDateTimeDisplay.textContent = '';
+                        }
+                    }
+                });
+                console.log("DEBUG: setupAuth finished. Listener registered.");
+            }
+
+            initializeApp();
+        });
+    </script>
+</body>
+</html>

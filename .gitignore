@@ -1,1 +1,43 @@
+# Arquivos temporários e builds
+*.pyc
+__pycache__/
+*.log
+*.zip
+*.tar.gz
+
+# Ambientes virtuais
+.venv/
+venv/
+env/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Dados locais
+chroma_db/
+.env
+.env.local
+
+# Node modules
+node_modules/
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Cloud SDK
+google-cloud-sdk/
+backend/.gcloudignore
+
+# Releases
 release.zip
+
+# OS
+.DS_Store
+Thumbs.db
