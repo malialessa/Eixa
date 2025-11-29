@@ -191,9 +191,10 @@ async def interact_api():
     if not GCP_PROJECT:
         logger.critical("GCP_PROJECT não definido. A aplicação não pode operar.")
         return jsonify({"status": "error", "response": "Erro de configuração do servidor (GCP_PROJECT ausente)."}), 500, headers
-    if not GEMINI_API_KEY:
-        logger.critical("GEMINI_API_KEY não definido. Interações com LLM não são possíveis.")
-        return jsonify({"status": "error", "response": "Erro de configuração do servidor (Chave Gemini ausente)."}), 500, headers
+
+    gemini_api_key = GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY")
+    if not gemini_api_key:
+        logger.warning("GEMINI_API_KEY não definido. Usando Vertex AI via credenciais padrão do serviço.")
     
     try:
         # TODA a lógica principal foi movida para orchestrate_eixa_response
@@ -204,7 +205,7 @@ async def interact_api():
             view_request=request_json.get('view_request'),
             gcp_project_id=GCP_PROJECT,
             region=REGION,
-            gemini_api_key=GEMINI_API_KEY,
+            gemini_api_key=gemini_api_key,
             gemini_text_model=GEMINI_TEXT_MODEL,
             gemini_vision_model=GEMINI_VISION_MODEL,
             firestore_collection_interactions='interactions',
