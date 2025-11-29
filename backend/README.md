@@ -27,8 +27,11 @@ gcloud run deploy eixa-api \
 - `firestore_*.py` - Utilitários do Firestore
 - `google_calendar_utils.py` - Integração com Google Calendar
 - `vertex_utils.py` - Integração com Vertex AI/Gemini
+- `bigquery_utils.py` - Utilitários do BigQuery para analytics e RAG
+- `metrics_utils.py` - Coleta de métricas de performance
 - `requirements.txt` - Dependências Python
 - `Dockerfile` - Configuração do container
+- `tests/` - Testes unitários e de integração
 
 ## 🔧 Variáveis de Ambiente
 
@@ -44,3 +47,33 @@ gcloud run deploy eixa-api \
 ## 🔗 URL da API
 
 Produção: `https://eixa-api-760851989407.us-east1.run.app`
+
+## 📊 Métricas e Observabilidade
+
+O sistema agora coleta métricas de performance para operações críticas e as armazena no BigQuery na tabela `operation_metrics`.
+
+As métricas coletadas incluem:
+- **Latência**: Duração de chamadas a APIs externas (Gemini) e funções internas (busca vetorial, etc.).
+- **Sucesso/Falha**: Registro do resultado de operações críticas.
+- **Contagem**: Número de itens retornados em buscas.
+
+As métricas são aplicadas usando o decorador `@measure_async("nome.operacao")` do `metrics_utils.py`.
+
+## ✅ Testes
+
+O projeto agora inclui uma suíte de testes automatizados usando `pytest`.
+
+### Instalar dependências de desenvolvimento:
+```bash
+pip install -r requirements-dev.txt
+```
+
+### Rodar todos os testes:
+```bash
+python -m pytest
+```
+
+### Rodar um arquivo de teste específico:
+```bash
+python -m pytest tests/test_vectorstore_cache.py
+```

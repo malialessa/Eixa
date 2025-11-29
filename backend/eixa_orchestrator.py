@@ -1,6 +1,7 @@
 import logging
 import asyncio
 import uuid
+import time
 from datetime import date, datetime, timezone, timedelta
 from typing import Dict, Any, List
 import re
@@ -24,6 +25,8 @@ from eixa_data import (
 
 from vertex_utils import call_gemini_api
 from vectorstore_utils import get_embedding, add_memory_to_vectorstore, get_relevant_memories
+from bigquery_utils import bq_manager
+from metrics_utils import measure_async, record_latency
 
 # Importações de firestore_utils para operar com o Firestore
 from firestore_utils import (
@@ -175,12 +178,14 @@ async def _extract_llm_action_intent(user_id: str, user_message: str, history: l
 
     try:
         llm_response_raw = await call_gemini_api(
-            api_key=gemini_api_key,
+            api_key=gemini_api_key,  # Se None, usa Vertex SDK
             model_name=gemini_text_model,
             conversation_history=llm_history,
             system_instruction=system_instruction_for_action_extraction,
             max_output_tokens=1024,
-            temperature=0.1
+            temperature=0.1,
+            project_id=gcp_project_id,
+            region=region
         )
 
         if llm_response_raw:
@@ -197,6 +202,7 @@ async def _extract_llm_action_intent(user_id: str, user_message: str, history: l
         return {"intent_detected": "none"}
 
 
+@measure_async("orchestrator.handle_request")
 async def orchestrate_eixa_response(user_id: str, user_message: str = None, uploaded_file_data: Dict[str, Any] = None,
                                      view_request: str = None, gcp_project_id: str = None, region: str = None,
                                      gemini_api_key: str = None, gemini_text_model: str = GEMINI_TEXT_MODEL,
@@ -261,46 +267,53 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
     # --- 2. Processamento de Requisições de Visualização (view_request) ---
     if view_request:
         logger.debug(f"ORCHESTRATOR | Processing view_request: {view_request}")
-        if view_request == "agenda":
-            agenda_data = await get_all_daily_tasks(user_id)
-            response_payload["html_view_data"]["agenda"] = agenda_data
-            response_payload["response"] = "Aqui estão suas tarefas."
-        elif view_request == "projetos":
-            projects_data = await get_all_projects(user_id)
-            response_payload["html_view_data"]["projetos"] = projects_data
-            response_payload["response"] = "Aqui está a lista dos seus projetos."
-        # NOVO: View para TEMPLATES de rotina (acessada pelo botão no Perfil)
-        elif view_request == "rotinas_templates_view":
-            response_payload["html_view_data"]["routines"] = all_routines
-            response_payload["response"] = "Aqui estão seus templates de rotina."
-        elif view_request == "diagnostico":
-            diagnostic_data = await get_latest_self_eval(user_id)
-            response_payload["html_view_data"]["diagnostico"] = diagnostic_data
-            response_payload["response"] = "Aqui está seu último diagnóstico."
-        elif view_request == "emotionalMemories":
-            mems_data = await get_emotional_memories(user_id, 10)
-            response_payload["html_view_data"]["emotional_memories"] = mems_data
-            response_payload["response"] = "Aqui estão suas memórias emocionais recentes."
-        elif view_request == "longTermMemory":
-            if user_profile.get('eixa_interaction_preferences', {}).get('display_profile_in_long_term_memory', False):
-                response_payload["html_view_data"]["long_term_memory"] = user_profile
-                response_payload["response"] = "Aqui está seu perfil de memória de longo prazo."
+        view_timer = time.perf_counter()
+        view_success = False
+        try:
+            if view_request == "agenda":
+                agenda_data = await get_all_daily_tasks(user_id)
+                response_payload["html_view_data"]["agenda"] = agenda_data
+                response_payload["response"] = "Aqui estão suas tarefas."
+            elif view_request == "projetos":
+                projects_data = await get_all_projects(user_id)
+                response_payload["html_view_data"]["projetos"] = projects_data
+                response_payload["response"] = "Aqui está a lista dos seus projetos."
+            # NOVO: View para TEMPLATES de rotina (acessada pelo botão no Perfil)
+            elif view_request == "rotinas_templates_view":
+                response_payload["html_view_data"]["routines"] = all_routines
+                response_payload["response"] = "Aqui estão seus templates de rotina."
+            elif view_request == "diagnostico":
+                diagnostic_data = await get_latest_self_eval(user_id)
+                response_payload["html_view_data"]["diagnostico"] = diagnostic_data
+                response_payload["response"] = "Aqui está seu último diagnóstico."
+            elif view_request == "emotionalMemories":
+                mems_data = await get_emotional_memories(user_id, 10)
+                response_payload["html_view_data"]["emotional_memories"] = mems_data
+                response_payload["response"] = "Aqui estão suas memórias emocionais recentes."
+            elif view_request == "longTermMemory":
+                if user_profile.get('eixa_interaction_preferences', {}).get('display_profile_in_long_term_memory', False):
+                    response_payload["html_view_data"]["long_term_memory"] = user_profile
+                    response_payload["response"] = "Aqui está seu perfil de memória de longo prazo."
+                else:
+                    response_payload["status"] = "info"
+                    response_payload["response"] = "A exibição do seu perfil completo na memória de longo prazo está desativada. Se desejar ativá-la, por favor me diga 'mostrar meu perfil'."
+                    logger.info(f"ORCHESTRATOR | Long-term memory (profile) requested but display is disabled for user '{user_id}'.")
+            # NOVO: View Request para verificar status de conexão do Google Calendar
+            elif view_request == "google_calendar_connection_status":
+                is_connected = await google_calendar_auth_manager.get_credentials(user_id) is not None
+                response_payload["html_view_data"]["google_calendar_connected_status"] = is_connected
+                response_payload["response"] = f"Status de conexão Google Calendar: {'Conectado' if is_connected else 'Não Conectado'}."
+                logger.info(f"ORCHESTRATOR | Google Calendar connection status requested. Is Connected: {is_connected}")
             else:
-                response_payload["status"] = "info"
-                response_payload["response"] = "A exibição do seu perfil completo na memória de longo prazo está desativada. Se desejar ativá-la, por favor me diga 'mostrar meu perfil'."
-                logger.info(f"ORCHESTRATOR | Long-term memory (profile) requested but display is disabled for user '{user_id}'.")
-        # NOVO: View Request para verificar status de conexão do Google Calendar
-        elif view_request == "google_calendar_connection_status":
-            is_connected = await google_calendar_auth_manager.get_credentials(user_id) is not None
-            response_payload["html_view_data"]["google_calendar_connected_status"] = is_connected
-            response_payload["response"] = f"Status de conexão Google Calendar: {'Conectado' if is_connected else 'Não Conectado'}."
-            logger.info(f"ORCHESTRATOR | Google Calendar connection status requested. Is Connected: {is_connected}")
-        else:
-            response_payload["status"] = "error"
-            response_payload["response"] = "View solicitada inválida."
+                response_payload["status"] = "error"
+                response_payload["response"] = "View solicitada inválida."
 
-        if mode_debug_on: response_payload["debug_info"].setdefault("orchestrator_debug_log", []).extend(debug_info_logs)
-        return {"response_payload": response_payload}
+            view_success = response_payload.get("status") != "error"
+            if mode_debug_on: response_payload["debug_info"].setdefault("orchestrator_debug_log", []).extend(debug_info_logs)
+            return {"response_payload": response_payload}
+        finally:
+            duration_ms = (time.perf_counter() - view_timer) * 1000.0
+            record_latency(f"view.{view_request}", duration_ms, view_success)
     
     # --- 3. Processamento de Requisições DIRETAS de Google Calendar (NÃO via LLM) ---
     if request_type == "google_calendar_action":
@@ -918,9 +931,14 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
     # Chamada LLM genérica
     logger.debug(f"ORCHESTRATOR | Calling Gemini API for generic response. Model: {gemini_final_model}")
     gemini_response_text_in_pt = await call_gemini_api(
-        api_key=gemini_api_key, model_name=gemini_final_model, conversation_history=conversation_history,
-        system_instruction=final_system_instruction, max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
-        temperature=DEFAULT_TEMPERATURE
+        api_key=gemini_api_key,  # Se ausente, SDK Vertex
+        model_name=gemini_final_model,
+        conversation_history=conversation_history,
+        system_instruction=final_system_instruction,
+        max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
+        temperature=DEFAULT_TEMPERATURE,
+        project_id=gcp_project_id,
+        region=region
     )
 
     final_ai_response = gemini_response_text_in_pt
@@ -1061,5 +1079,24 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         response_payload["debug_info"]["user_flags_loaded"] = 'true' if user_flags_data else 'false'
         response_payload["debug_info"]["generated_nudge"] = 'true' if nudge_message else 'false'
         response_payload["debug_info"]["system_instruction_snippet"] = final_system_instruction[:500] + "..."
+
+    # Log interaction to BigQuery for analytics and RAG
+    if bq_manager and user_message:
+        try:
+            interaction_id = str(uuid.uuid4())
+            asyncio.create_task(
+                bq_manager.log_interaction(
+                    user_id=user_id,
+                    interaction_id=interaction_id,
+                    message_in=user_message[:5000],  # Limit to 5k chars
+                    message_out=response_payload.get("response", "")[:5000],
+                    intent=detected_intent if 'detected_intent' in locals() else None,
+                    language=response_payload.get("language", "pt"),
+                    model_used=gemini_text_model,
+                )
+            )
+            logger.debug(f"ORCHESTRATOR | BigQuery logging scheduled for interaction {interaction_id}")
+        except Exception as e:
+            logger.error(f"ORCHESTRATOR | Failed to schedule BigQuery logging: {e}")
 
     return {"response_payload": response_payload}

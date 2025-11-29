@@ -12,6 +12,7 @@ from eixa_orchestrator import orchestrate_eixa_response
 from crud_orchestrator import orchestrate_crud_action
 from config import GEMINI_TEXT_MODEL, GEMINI_VISION_MODEL
 from google_calendar_utils import GoogleCalendarUtils
+from bigquery_utils import initialize_bigquery, bq_manager
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -52,6 +53,14 @@ def _initialize_app_globals():
         logger.warning("Uma ou mais variáveis de ambiente do Google OAuth (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI, FRONTEND_URL) não estão definidas. A integração com o Google Calendar pode não funcionar corretamente.")
     else:
         google_calendar_utils_instance = GoogleCalendarUtils()
+
+    # Initialize BigQuery
+    if GCP_PROJECT:
+        try:
+            initialize_bigquery(GCP_PROJECT)
+            logger.info("BigQuery initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize BigQuery: {e}", exc_info=True)
 
     logger.info(f"Variáveis de ambiente carregadas. GCP Project: {GCP_PROJECT}, Region: {REGION}")
     logger.info(f"Google OAuth Config: Client ID present: {bool(GOOGLE_CLIENT_ID)}, Redirect URI present: {bool(GOOGLE_REDIRECT_URI)}, Frontend URL present: {bool(FRONTEND_URL)}")
@@ -233,6 +242,53 @@ async def interact_api():
             "response": "Erro interno inesperado.",
             "debug_info": [f"Erro interno: {type(e).__name__} - {str(e)}"]
         }), 500, headers
+
+@app.route("/actions", methods=["POST", "OPTIONS"])
+async def actions_api():
+    """Endpoint dedicado para ações CRUD estruturadas vindas diretamente da UI."""
+    headers = {
+        'Access-Control-Allow-Origin': FRONTEND_URL,
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Max-Age': '3600'
+    }
+
+    if not FRONTEND_URL:
+        headers['Access-Control-Allow-Origin'] = '*'
+
+    if request.method == 'OPTIONS':
+        return Response(status=204, headers=headers)
+
+    request_json = request.get_json(silent=True)
+    if not request_json:
+        return jsonify({"status": "error", "message": "JSON inválido."}), 400, headers
+
+    user_id = request_json.get('user_id')
+    item_type = request_json.get('item_type')
+    action = request_json.get('action')
+    data = request_json.get('data', {})
+
+    if not user_id or not isinstance(user_id, str):
+        return jsonify({"status": "error", "message": "'user_id' é obrigatório."}), 400, headers
+    if not item_type or not action:
+        return jsonify({"status": "error", "message": "Campos 'item_type' e 'action' são obrigatórios."}), 400, headers
+
+    payload = {
+        "user_id": user_id,
+        "item_type": item_type,
+        "action": action,
+        "item_id": request_json.get('item_id'),
+        "data": data,
+        "date": request_json.get('date')
+    }
+
+    try:
+        result = await orchestrate_crud_action(payload)
+        status_code = 200 if result.get("status") != "error" else 400
+        return jsonify(result), status_code, headers
+    except Exception as e:
+        logger.critical(f"/actions: Failed to process payload for user {user_id}: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": "Erro interno inesperado."}), 500, headers
 
 @functions_framework.http
 def eixa_entry(request):

@@ -2,25 +2,80 @@ import os
 import httpx
 import json
 import logging
+import asyncio
+from metrics_utils import measure_async, record_latency
 
 from config import DEFAULT_MAX_OUTPUT_TOKENS, DEFAULT_TEMPERATURE, EMBEDDING_MODEL_NAME
 from vertexai.language_models import TextEmbeddingModel
+import vertexai
+from vertexai.generative_models import GenerativeModel
 
 logger = logging.getLogger(__name__)
 
+@measure_async("vertex.call_gemini_api")
 async def call_gemini_api(
     api_key: str,
     model_name: str,
     conversation_history: list[dict],
     system_instruction: str = None,
-    max_output_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS, # <-- Esta é a linha corrigida
-    temperature: float = DEFAULT_TEMPERATURE, # <-- Esta é a linha corrigida
-    debug_mode: bool = False
+    max_output_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS,
+    temperature: float = DEFAULT_TEMPERATURE,
+    debug_mode: bool = False,
+    project_id: str | None = None,
+    region: str | None = None
 ) -> str | None:
+    """Chama Gemini.
+    Se api_key fornecida => usa REST generativelanguage.
+    Caso contrário => usa Vertex AI SDK (ADC) para evitar dependência de API key.
     """
-    Chama o modelo Gemini da Generative Language API via REST de forma assíncrona.
-    Inclui tratamento para respostas truncadas e configurações de segurança.
-    """
+    if not api_key:
+        # Vertex AI SDK path
+        try:
+            if project_id and region:
+                vertexai.init(project=project_id, location=region)
+            model = GenerativeModel(model_name, system_instruction=system_instruction)
+            # Converter conversation_history (formato parts) para lista de Content simples
+            messages = []
+            for turn in conversation_history:
+                role = turn.get("role")
+                parts = turn.get("parts", [])
+                text_parts = []
+                for p in parts:
+                    if isinstance(p, dict) and 'text' in p:
+                        text_parts.append(p['text'])
+                combined = "\n".join(text_parts)
+                if combined:
+                    messages.append({"role": role, "content": combined})
+
+            # generate_content aceita lista de strings ou Content; simplificamos para lista concatenada
+            # Juntar sequência user/model alternada em um único prompt preservando ordem
+            prompt_segments = []
+            for m in messages:
+                prefix = "User:" if m["role"] == "user" else "Model:"
+                prompt_segments.append(f"{prefix} {m['content']}")
+            final_prompt = "\n".join(prompt_segments)
+
+            response = await asyncio.to_thread(
+                model.generate_content,
+                [final_prompt],
+                generation_config={
+                    "temperature": temperature,
+                    "max_output_tokens": max_output_tokens,
+                    "top_p": 0.95,
+                    "top_k": 40,
+                }
+            )
+            text = getattr(response, 'text', None)
+            if debug_mode and text:
+                logger.debug(f"Vertex Gemini response (first 500 chars): {text[:500]}")
+            # Métrica adicional de sucesso lógico (texto retornado)
+            record_latency("vertex.gemini.sdk.result", 0.0, bool(text))
+            return text
+        except Exception as e:
+            logger.error(f"Vertex AI SDK call failed (fallback to REST not possible without api_key): {e}", exc_info=True)
+            return None
+
+    # REST path (api_key provided)
     api_endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
     headers = {"Content-Type": "application/json"}
     payload = {
@@ -39,61 +94,52 @@ async def call_gemini_api(
         ],
     }
     if system_instruction:
-        payload["system_instruction"] = { "parts": [{"text": system_instruction}] }
+        payload["system_instruction"] = {"parts": [{"text": system_instruction}]}
 
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(api_endpoint, headers=headers, json=payload, params={"key": api_key})
-            response.raise_for_status() 
+            response.raise_for_status()
             response_json = response.json()
-
             if debug_mode:
                 logger.debug(f"Full Gemini API response JSON: {json.dumps(response_json, indent=2)}")
-
-            # --- AQUI ESTÁ A CORREÇÃO MAIS CRÍTICA PARA 'parts' e 'generated_text' ---
-            generated_text = None # Inicializa generated_text AQUI para evitar UnboundLocalError
-            
+            generated_text = None
             if response_json.get('candidates'):
                 first_candidate = response_json['candidates'][0]
                 finish_reason = first_candidate.get('finishReason', 'UNKNOWN')
-                
                 content = first_candidate.get('content', {})
-                parts = content.get('parts', []) # <--- CORREÇÃO: Use [] em vez de [{}]
-                
-                if parts and len(parts) > 0: # Garante que 'parts' não está vazia
+                parts = content.get('parts', [])
+                if parts:
                     generated_text = parts[0].get('text')
                 else:
-                    logger.warning(f"Gemini API response has candidates but no parts or no text in first part. Finish reason: {finish_reason}. Response: {json.dumps(response_json, indent=2)}")
-
-                if generated_text is not None and generated_text != "": # Verifica explicitamente None e string vazia
-                    logger.info(f"Gemini response text extracted successfully (first 100 chars): '{generated_text[:100]}...'")
+                    logger.warning(f"Gemini API response has candidates but no parts or text. Reason: {finish_reason}")
+                if generated_text:
                     if finish_reason != 'STOP':
-                        logger.warning(f"Gemini response finished with reason: {finish_reason}. Appending truncation warning.")
-                        generated_text += "\n\n[⚠️ AVISO: A resposta pode estar incompleta, pois o modelo atingiu um limite.]"
+                        generated_text += "\n\n[⚠️ AVISO: A resposta pode estar incompleta, limite atingido.]"
+                    record_latency("vertex.gemini.rest.result", 0.0, True)
                     return generated_text
-                else:
-                    logger.warning(f"Gemini API response has candidates but generated_text is empty or None. Finish reason: {finish_reason}. This indicates the model likely finished due to MAX_TOKENS or generation constraint. Full Response: {json.dumps(response_json, indent=2)}")
-                    return None 
-
-            else: # Se não há 'candidates' (ex: bloqueio de segurança)
+                record_latency("vertex.gemini.rest.result", 0.0, False)
+                return None
+            else:
                 safety_ratings = response_json.get('promptFeedback', {}).get('safetyRatings', [])
                 if safety_ratings:
-                    logger.warning(f"Gemini API response blocked due to safety. Prompt Feedback: {json.dumps(safety_ratings, indent=2)}")
-                    return "Sua solicitação foi bloqueada por razões de segurança. Por favor, reformule sua mensagem."
-                
-                logger.warning(f"Gemini API response without valid candidates. Response: {json.dumps(response_json, indent=2)}")
+                    logger.warning(f"Gemini API blocked due to safety: {json.dumps(safety_ratings, indent=2)}")
+                    return "Sua solicitação foi bloqueada por razões de segurança. Reformule a mensagem."
+                logger.warning("Gemini API response sem candidatos válidos.")
+                record_latency("vertex.gemini.rest.result", 0.0, False)
                 return None
-
     except httpx.HTTPStatusError as e:
         logger.error(f"HTTP Error calling Gemini API: {e.response.status_code} - {e.response.text}", exc_info=True)
+        record_latency("vertex.gemini.rest.result", 0.0, False)
         return None
     except json.JSONDecodeError as e:
-        logger.error(f"Error decoding JSON from Gemini API response: {e}. Response text: {e.response.text if hasattr(e, 'response') else 'No response text'}", exc_info=True)
+        logger.error(f"JSON decode error da resposta Gemini: {e}", exc_info=True)
         return None
     except Exception as e:
-        logger.error(f"Unexpected error calling Gemini API: {e}", exc_info=True)
+        logger.error(f"Erro inesperado na chamada REST Gemini: {e}", exc_info=True)
         return None
 
+@measure_async("vertex.count_gemini_tokens")
 async def count_gemini_tokens(api_key: str, model_name: str, parts_to_count: list[dict], debug_mode: bool = False) -> int:
     api_endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:countTokens"
     payload = {"contents": [{"role": "user", "parts": parts_to_count}]}

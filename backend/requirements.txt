@@ -9,6 +9,7 @@ firebase-admin==6.2.0
 # FIXADO: Garantir versão do Firestore que suporta 'source'
 google-cloud-firestore==2.16.0 # Ou uma versão mais recente, por exemplo, 2.16.0 ou superior da série 2.x
 google-cloud-storage>=2.10.0
+google-cloud-bigquery>=3.11.0
 
 # == Google Authentication e APIs (NOVO AQUI!) ==
 google-auth # Pacote base de autenticação do Google

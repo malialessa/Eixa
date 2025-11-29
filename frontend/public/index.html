@@ -78,6 +78,10 @@
             --google-calendar-event-bg: color-mix(in srgb, var(--google-blue) 10%, transparent);
             --routine-task-color: var(--success-green); /* Tarefas de rotina */
             --routine-task-bg: color-mix(in srgb, var(--success-green) 10%, transparent);
+
+            --keyboard-offset: 0px; /* deslocamento aplicado quando o teclado móvel está aberto */
+            --agenda-hour-height: 60px; /* altura padrão de cada hora na timeline */
+            --agenda-hour-height-mobile: 44px;
         }
 
         /* Dark Mode */
@@ -655,6 +659,7 @@
             overflow-y: auto;
             padding: var(--spacing-xl);
             background-color: var(--bg-secondary);
+            scroll-padding-bottom: 140px;
         }
         .view-intro {
             padding: var(--spacing-md) var(--spacing-xl);
@@ -672,6 +677,7 @@
             padding: var(--spacing-xl);
             display: flex; flex-direction: column;
             gap: var(--spacing-md);
+            scroll-padding-bottom: calc(140px + var(--keyboard-offset, 0px));
         }
         .message {
             padding: var(--spacing-md);
@@ -723,6 +729,8 @@
             background-color: var(--bg-primary);
             border-top: 1px solid var(--border-color);
             flex-shrink: 0;
+            transform: translateY(calc(-1 * var(--keyboard-offset, 0px)));
+            transition: transform var(--transition-speed) ease;
         }
         .input-wrapper {
             display: flex;
@@ -885,9 +893,9 @@
         .agenda-timeline-grid {
             display: grid;
             grid-template-columns: 60px 1fr; 
-            grid-auto-rows: 60px; 
+            grid-auto-rows: var(--agenda-hour-height);
             position: relative;
-            height: 1440px; 
+            height: calc(24 * var(--agenda-hour-height)); 
             border-left: 1px solid var(--border-color); 
             padding-left: var(--spacing-md);
         }
@@ -1326,6 +1334,8 @@
             color: var(--text-secondary);
             cursor: pointer;
             padding: var(--spacing-sm);
+            min-width: 44px;
+            min-height: 44px;
             border-radius: 50%;
             display: inline-flex; align-items: center; justify-content: center;
         }
@@ -1374,6 +1384,13 @@
             border-radius: var(--border-radius-md);
             cursor: pointer;
         }
+        .button-primary:disabled,
+        .button-secondary:disabled,
+        .button-secondary.button-disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
         .button-primary { background-color: var(--primary-accent); color: white; }
         .button-primary:hover { background-color: var(--primary-accent-darker); box-shadow: var(--shadow-medium); }
         .button-primary .material-icons {
@@ -1388,6 +1405,9 @@
         .button-secondary:hover { background-color: var(--bg-tertiary); border-color: var(--primary-accent); }
         .button-secondary .material-icons {
             color: var(--text-primary);
+        }
+        .button-secondary.button-pressed {
+            box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--primary-accent-light) 60%, transparent);
         }
         .button-secondary:hover .material-icons { color: var(--primary-accent); }
 
@@ -1729,6 +1749,9 @@
         }
         /* Mobile styles - sidebar at the bottom (now acting as bottom nav) */
         @media (max-width: 768px) {
+            :root {
+                --agenda-hour-height: var(--agenda-hour-height-mobile);
+            }
             /* 1. Login Mobile (Tela Travada) */
             .auth-section {
                 position: absolute;
@@ -1767,17 +1790,18 @@
 
             .chat-input-area {
                 position: fixed;
-                bottom: 0;
+                bottom: calc(env(safe-area-inset-bottom, 0px));
                 left: 0;
                 right: 0;
                 width: 100%;
                 z-index: 10;
                 padding: var(--spacing-md);
-                padding-bottom: calc(var(--spacing-md) + 60px);
+                padding-bottom: calc(var(--spacing-md) + env(safe-area-inset-bottom, 0px));
                 box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
                 display: flex;
                 flex-direction: column;
                 gap: var(--spacing-sm);
+                will-change: transform;
             }
             
             .chat-input-area #inputWrapper {
@@ -1790,7 +1814,7 @@
             }
 
             #chatDisplay {
-                padding-bottom: calc(var(--spacing-xl) + 120px);
+                padding-bottom: calc(var(--spacing-xl) + 120px + var(--keyboard-offset, 0px));
             }
 
             #agendaDisplay, /* Este é o display da nova aba Agenda (antiga Rotinas) */
@@ -1801,7 +1825,7 @@
                 min-height: calc(100vh - 120px - 60px);
                 overflow-y: auto;
                 -webkit-overflow-scrolling: touch;
-                padding-bottom: calc(var(--spacing-xxl) + 60px);
+                padding-bottom: calc(var(--spacing-xxl) + 80px + var(--keyboard-offset, 0px));
             }
 
             /* 3. FAB (Floating Action Button da IA) */
@@ -1830,7 +1854,12 @@
                 bottom: 0;
                 left: 0;
                 z-index: 100;
-                background-color: var(--bg-primary);
+                background: linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.98) 60%, var(--bg-primary) 100%);
+                box-shadow: 0 -12px 32px rgba(0,0,0,0.08);
+            }
+            body.dark-mode .sidebar-menu {
+                background: linear-gradient(180deg, rgba(10,10,12,0.9) 0%, rgba(10,10,12,0.95) 50%, var(--bg-primary) 100%);
+                box-shadow: 0 -12px 32px rgba(0,0,0,0.4);
             }
             .main-content-area {
                 border-radius: 0;
@@ -2066,6 +2095,9 @@
                 </button>
                 <button id="syncGoogleCalendarBtnAgenda" class="add-action-button" aria-label="Sincronizar Google Calendar" title="Sincronizar Google Calendar">
                     <i class="material-icons">sync</i>
+                </button>
+                <button id="scrollToNowBtn" class="button-secondary" aria-label="Ir para o horário atual" title="Ir para o horário atual">
+                    <i class="material-icons">schedule</i> Agora
                 </button>
             </header>
             <div id="agendaDisplay" class="content-display-area"> 
@@ -2554,6 +2586,7 @@
             // --- CONFIGURATION AND GLOBAL STATE ---
             const config = {
                 CLOUD_FUNCTION_URL: "https://eixa-760851989407.us-east1.run.app/interact",
+                CLOUD_FUNCTION_ACTION_URL: "https://eixa-760851989407.us-east1.run.app/actions",
                 CLOUD_FUNCTION_AUTH_URL: "https://eixa-760851989407.us-east1.run.app/auth/google",
                 CLOUD_FUNCTION_OAUTH_CALLBACK_URL: "https://eixa-760851989407.us-east1.run.app/oauth2callback",
                 firebaseConfig: {
@@ -2654,6 +2687,12 @@
                                (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark-mode' : 'light-mode');
             
             let userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Sao_Paulo';
+            let agendaIndicatorIntervalId = null;
+            let hasAutoCenteredAgenda = false;
+            let agendaScrollUpdateFrame = null;
+            let baseViewportHeight = window.innerHeight || 0;
+            let currentKeyboardOffsetPx = 0;
+            let keyboardOffsetResetTimeoutId = null;
 
             function updateClockDisplay() {
                 // Apenas acessa se o elemento existir, o que será garantido por initializeDynamicDOMElements se a UI for construída
@@ -2799,6 +2838,7 @@
                 elements.openAddTaskModalBtn = document.getElementById('openAddTaskModalBtn');
                 elements.openAddRoutineModalBtn = document.getElementById('openAddRoutineModalBtn');
                 elements.syncGoogleCalendarBtnAgenda = document.getElementById('syncGoogleCalendarBtnAgenda');
+                elements.scrollToNowBtn = document.getElementById('scrollToNowBtn');
                 
                 // Elementos dentro de #rotinasTemplatesViewContent
                 elements.rotinasTemplatesViewContent = document.getElementById('rotinasTemplatesViewContent');
@@ -2840,6 +2880,12 @@
 
                 // Agora que os elementos estão no DOM, podemos coletar suas referências
                 initializeDynamicDOMElementsInMainContent();
+                hasAutoCenteredAgenda = false;
+                if (elements.agendaDisplay) {
+                    elements.agendaDisplay.addEventListener('scroll', handleAgendaScroll, { passive: true });
+                }
+                updateScrollToNowButtonState();
+                updateKeyboardOffset();
 
                 // Define textos e visibilidades iniciais para os elementos da UI principal
                 if (elements.chatAiThinkingSrOnly) elements.chatAiThinkingSrOnly.textContent = i18nStrings.aiProcessing;
@@ -2942,6 +2988,26 @@
 
                 window.addEventListener('offline', () => { console.log("DEBUG: Offline event."); showToast(i18nStrings.offlineMessage, 'error', 0); }); 
                 window.addEventListener('online', () => { console.log("DEBUG: Online event."); showToast(i18nStrings.onlineMessage, 'success'); });
+                window.addEventListener('resize', () => {
+                    updateScrollToNowButtonState();
+                    updateKeyboardOffset();
+                });
+                if (window.visualViewport) {
+                    window.visualViewport.addEventListener('resize', () => updateKeyboardOffset(), { passive: true });
+                    window.visualViewport.addEventListener('scroll', () => updateKeyboardOffset(), { passive: true });
+                }
+                document.addEventListener('focusin', (event) => {
+                    const target = event.target;
+                    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+                        handleInputFocusForKeyboard();
+                    }
+                });
+                document.addEventListener('focusout', (event) => {
+                    const target = event.target;
+                    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+                        handleInputBlurForKeyboard();
+                    }
+                });
                 console.log("DEBUG: setupEventListeners finished.");
             }
 
@@ -2959,6 +3025,10 @@
                 else if (target.closest('#connectGoogleCalendarBtn')) handleConnectGoogleCalendar();
                 else if (target.closest('#syncGoogleCalendarBtn') || target.closest('#syncGoogleCalendarBtnAgenda')) handleSyncGoogleCalendar();
                 else if (target.closest('#disconnectGoogleCalendarBtn')) handleDisconnectGoogleCalendar();
+                else if (target.closest('#scrollToNowBtn')) {
+                    e.preventDefault();
+                    scrollAgendaToNow({ behavior: 'smooth', userInitiated: true });
+                }
                 // Mobile Settings Buttons: Também são dinâmicos dentro do perfil, mas a delegação global funciona.
                 else if (target.closest('#mobileThemeToggleBtn')) toggleTheme();
                 else if (target.closest('#mobileSignOutBtn')) firebase.auth().signOut();
@@ -3129,13 +3199,14 @@
                     const routineId = routineCard.dataset.id;
                     const routineName = routineCard.querySelector('.routine-name-display').textContent;
                     console.log(`DEBUG: Requesting apply for routine: ${routineId}, '${routineName}'`);
-                    showConfirmationModal(`Aplicar a rotina "${escapeHTML(routineName)}" para qual data? (ex: "hoje", "amanhã", "2024-08-15")`, async (dateInput) => {
-                        const payload = {
-                            request_type: 'chat_and_view',
-                            message: `Aplique a rotina "${routineName}" (ID: ${routineId}) para ${dateInput}.`,
-                        };
-                        await handleSendMessage({ forcedMessage: payload.message });
-                        showToast(`Pedido para aplicar rotina "${routineName}" enviado.`, 'info');
+                    showConfirmationModal(`Aplicar a rotina "${escapeHTML(routineName)}" para qual data? (ex: "hoje", "amanhã", "2024-08-15")`, async (dateInputRaw) => {
+                        const resolvedDate = resolveDateInput(dateInputRaw);
+                        if (!resolvedDate) {
+                            showToast('Data inválida. Use "hoje", "amanhã" ou AAAA-MM-DD.', 'warning');
+                            console.warn('DEBUG: Invalid date provided for routine apply:', dateInputRaw);
+                            return;
+                        }
+                        await handleApplyRoutine(routineId, resolvedDate);
                     }, null, null, true); // O 'true' indica que queremos um input de texto na confirmação
                 }
                 else if (target.closest('.routine-card .delete-button')) {
@@ -3190,6 +3261,128 @@
                     console.log("DEBUG: File input changed.");
                     handleFileAttachment(e);
                 }
+            }
+
+            function setKeyboardOffsetCSS(valuePx) {
+                const sanitized = Math.max(0, Math.round(valuePx || 0));
+                if (sanitized === currentKeyboardOffsetPx) { return; }
+                currentKeyboardOffsetPx = sanitized;
+                document.documentElement.style.setProperty('--keyboard-offset', `${sanitized}px`);
+                console.log('DEBUG: Keyboard offset updated to', sanitized, 'px');
+            }
+
+            function computeKeyboardOffsetValue() {
+                if (window.visualViewport) {
+                    const viewport = window.visualViewport;
+                    const diff = Math.max(0, window.innerHeight - viewport.height);
+                    return diff > 60 ? diff : 0;
+                }
+                if (!baseViewportHeight || window.innerHeight > baseViewportHeight + 20) {
+                    baseViewportHeight = window.innerHeight;
+                }
+                const fallbackDiff = Math.max(0, baseViewportHeight - window.innerHeight);
+                return fallbackDiff > 60 ? fallbackDiff : 0;
+            }
+
+            function updateKeyboardOffset(options = {}) {
+                const { forceZero = false } = options;
+                if (forceZero) {
+                    setKeyboardOffsetCSS(0);
+                    return;
+                }
+                const offset = computeKeyboardOffsetValue();
+                setKeyboardOffsetCSS(offset);
+            }
+
+            function handleInputFocusForKeyboard() {
+                if (keyboardOffsetResetTimeoutId) {
+                    clearTimeout(keyboardOffsetResetTimeoutId);
+                    keyboardOffsetResetTimeoutId = null;
+                }
+                updateKeyboardOffset();
+            }
+
+            function handleInputBlurForKeyboard() {
+                if (keyboardOffsetResetTimeoutId) {
+                    clearTimeout(keyboardOffsetResetTimeoutId);
+                }
+                keyboardOffsetResetTimeoutId = setTimeout(() => updateKeyboardOffset({ forceZero: !window.visualViewport }), 250);
+            }
+
+            function getAgendaHourHeight() {
+                const rootStyles = getComputedStyle(document.documentElement);
+                const rawValue = rootStyles.getPropertyValue('--agenda-hour-height') || '60';
+                const numericValue = parseFloat(rawValue);
+                return Number.isFinite(numericValue) ? numericValue : 60;
+            }
+
+            function getAgendaPixelsPerMinute() {
+                return getAgendaHourHeight() / 60;
+            }
+
+            function getAgendaTimelineTopForNow() {
+                const now = new Date();
+                const totalMinutes = (now.getHours() * 60) + now.getMinutes();
+                return totalMinutes * getAgendaPixelsPerMinute();
+            }
+
+            function setScrollToNowButtonDisabled(disabled = true) {
+                if (!elements.scrollToNowBtn) { return; }
+                elements.scrollToNowBtn.disabled = disabled;
+                elements.scrollToNowBtn.setAttribute('aria-disabled', String(disabled));
+                elements.scrollToNowBtn.classList.toggle('button-disabled', disabled);
+            }
+
+            function updateScrollToNowButtonState() {
+                if (!elements.scrollToNowBtn || !elements.agendaDisplay) { return; }
+                const timelineExists = !!elements.agendaDisplay.querySelector('.agenda-timeline-grid');
+                if (!timelineExists) {
+                    setScrollToNowButtonDisabled(true);
+                    return;
+                }
+
+                const targetTop = getAgendaTimelineTopForNow();
+                const scrollTop = elements.agendaDisplay.scrollTop;
+                const viewportHeight = elements.agendaDisplay.clientHeight || 0;
+
+                if (!Number.isFinite(targetTop) || viewportHeight <= 0) {
+                    setScrollToNowButtonDisabled(false);
+                    return;
+                }
+
+                const indicatorVisible = targetTop >= scrollTop && targetTop <= (scrollTop + viewportHeight);
+                setScrollToNowButtonDisabled(indicatorVisible);
+            }
+
+            function scrollAgendaToNow({ behavior = 'smooth', userInitiated = false } = {}) {
+                if (!elements.agendaDisplay) {
+                    console.warn('DEBUG: scrollAgendaToNow aborted: agendaDisplay not ready.');
+                    return;
+                }
+
+                const targetTop = getAgendaTimelineTopForNow();
+                if (!Number.isFinite(targetTop)) {
+                    setScrollToNowButtonDisabled(true);
+                    return;
+                }
+
+                const viewportHeight = elements.agendaDisplay.clientHeight || 0;
+                const scrollTarget = Math.max(targetTop - (viewportHeight * 0.35), 0);
+                elements.agendaDisplay.scrollTo({ top: scrollTarget, behavior });
+
+                if (userInitiated) {
+                    elements.scrollToNowBtn?.classList.add('button-pressed');
+                    setTimeout(() => elements.scrollToNowBtn?.classList.remove('button-pressed'), 400);
+                }
+
+                setTimeout(updateScrollToNowButtonState, behavior === 'smooth' ? 350 : 0);
+            }
+
+            function handleAgendaScroll() {
+                if (agendaScrollUpdateFrame) {
+                    cancelAnimationFrame(agendaScrollUpdateFrame);
+                }
+                agendaScrollUpdateFrame = requestAnimationFrame(updateScrollToNowButtonState);
             }
 
             // --- View Rendering and Navigation Functions ---
@@ -3267,10 +3460,14 @@
                 payload.user_id = currentUser.uid;
                 payload.debug_mode = debugMode; 
 
+                const endpointUrl = payload.request_type === 'crud_action'
+                    ? (config.CLOUD_FUNCTION_ACTION_URL || config.CLOUD_FUNCTION_URL)
+                    : config.CLOUD_FUNCTION_URL;
+
                 try {  
                     const token = await currentUser.getIdToken(true);  
-                    console.log("DEBUG: Fetching token and sending request to:", config.CLOUD_FUNCTION_URL);
-                    const response = await fetch(config.CLOUD_FUNCTION_URL, {
+                    console.log("DEBUG: Fetching token and sending request to:", endpointUrl);
+                    const response = await fetch(endpointUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                         body: JSON.stringify(payload)
@@ -3391,14 +3588,16 @@
             }
 
             // Função para calcular a posição vertical em pixels (se 1px por minuto, 60px por hora)
-            function calculateTopPosition(timeStr, pixelsPerHour = 60) {
+            function calculateTopPosition(timeStr) {
                 if (!timeStr || !timeStr.includes(':')) return 0; 
                 const [hours, minutes] = timeStr.split(':').map(Number);
+                const pixelsPerHour = getAgendaHourHeight();
                 return (hours * pixelsPerHour) + (minutes * (pixelsPerHour / 60));
             }
 
             // Função para calcular a altura em pixels
-            function calculateHeight(durationMinutes, pixelsPerHour = 60) {
+            function calculateHeight(durationMinutes) {
+                const pixelsPerHour = getAgendaHourHeight();
                 return Math.max(20, (durationMinutes / 60) * pixelsPerHour);
             }
 
@@ -3408,6 +3607,7 @@
                 const displayArea = elements.agendaDisplay; 
                 if (!displayArea) { console.warn("DEBUG: agendaDisplay element not found."); return; }
                 displayArea.innerHTML = '';
+                hasAutoCenteredAgenda = false;
 
                 const now = new Date();
                 const todayISO = now.toLocaleDateString('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }); 
@@ -3417,8 +3617,14 @@
                 if (!todayData || !todayData.tasks || todayData.tasks.length === 0) {
                     displayArea.innerHTML = `<p class="no-data-message">${i18nStrings.noDataMessageAgenda}</p>`;
                     console.log("DEBUG: No tasks for today, displayed empty message.");
+                    if (agendaIndicatorIntervalId) {
+                        clearInterval(agendaIndicatorIntervalId);
+                        agendaIndicatorIntervalId = null;
+                    }
+                    setScrollToNowButtonDisabled(true);
                     return;
                 }
+                setScrollToNowButtonDisabled(false);
 
                 const timelineGrid = document.createElement('div');
                 timelineGrid.className = 'agenda-timeline-grid';
@@ -3442,25 +3648,23 @@
                 currentTimeIndicator.className = 'timeline-current-time-indicator';
                 timelineGrid.appendChild(currentTimeIndicator);
 
-                function updateCurrentTimeIndicator() {
-                    const nowLocal = new Date();
-                    const hours = nowLocal.getHours();
-                    const minutes = nowLocal.getMinutes();
-                    const seconds = nowLocal.getSeconds();
-                    
-                    const totalMinutesToday = (hours * 60) + minutes;
-                    const pixelsPerMinute = 60 / 60; 
-                    const topPosition = totalMinutesToday * pixelsPerMinute;
-                    
+                function updateCurrentTimeIndicator({ shouldAutoCenter = false } = {}) {
+                    const topPosition = getAgendaTimelineTopForNow();
                     currentTimeIndicator.style.top = `${topPosition}px`;
-                    
-                    if (displayArea) { 
-                        const viewportHeight = displayArea.clientHeight;
-                        displayArea.scrollTop = topPosition - (viewportHeight / 2); 
+
+                    if (shouldAutoCenter && !hasAutoCenteredAgenda) {
+                        scrollAgendaToNow({ behavior: 'auto' });
+                        hasAutoCenteredAgenda = true;
+                    } else {
+                        updateScrollToNowButtonState();
                     }
                 }
-                setInterval(updateCurrentTimeIndicator, 30 * 1000); 
-                updateCurrentTimeIndicator(); 
+
+                if (agendaIndicatorIntervalId) {
+                    clearInterval(agendaIndicatorIntervalId);
+                }
+                updateCurrentTimeIndicator({ shouldAutoCenter: true });
+                agendaIndicatorIntervalId = setInterval(() => updateCurrentTimeIndicator({ shouldAutoCenter: false }), 30 * 1000);
 
                 todayData.tasks.forEach(task => {
                     const eventBlock = renderAgendaEventBlock(task, todayISO);
@@ -3474,6 +3678,7 @@
                 });
 
                 displayArea.appendChild(timelineGrid); 
+                requestAnimationFrame(updateScrollToNowButtonState);
                 console.log("DEBUG: displayAgenda finished.");
             }
 
@@ -4749,6 +4954,42 @@
                 return null;
             }
 
+            function resolveDateInput(inputValue) {
+                const today = new Date();
+                const normalize = (date) => date.toISOString().split('T')[0];
+
+                if (!inputValue) {
+                    return normalize(today);
+                }
+
+                const raw = inputValue.trim().toLowerCase();
+                if (!raw) {
+                    return normalize(today);
+                }
+
+                if (raw === 'hoje' || raw === 'today') {
+                    return normalize(today);
+                }
+
+                if (raw === 'amanha' || raw === 'amanhã' || raw === 'tomorrow') {
+                    const tomorrow = new Date(today);
+                    tomorrow.setDate(today.getDate() + 1);
+                    return normalize(tomorrow);
+                }
+
+                const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+                if (isoMatch) {
+                    return raw;
+                }
+
+                const parsedDate = new Date(raw);
+                if (!isNaN(parsedDate)) {
+                    return normalize(parsedDate);
+                }
+
+                return null;
+            }
+
             // Handlers para Rotinas
             async function handleApplyRoutine(routineId, date) {
                 console.log("DEBUG: handleApplyRoutine called for routine:", routineId, "date:", date);
@@ -4762,7 +5003,7 @@
                         item_type: 'routine',
                         action: 'apply_to_day',
                         item_id: routineId,
-                        data: { date: date || new Date().toISOString().split('T')[0] }
+                        data: { date: date || resolveDateInput() }
                     };
                     const response = await callBackendAPI(payload);
                     if (response?.status === 'success') {

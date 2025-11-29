@@ -3,10 +3,12 @@ from google.cloud import firestore
 from firestore_client_singleton import _initialize_firestore_client_instance
 from collections_manager import get_top_level_collection, get_user_doc_ref
 import copy
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import asyncio 
 
 logger = logging.getLogger(__name__)
+
+CONFIRMATION_STATE_TTL_MINUTES = 5
 
 async def get_firestore_document_data(logical_collection_name: str, document_id: str) -> dict | None:
     try:
@@ -141,8 +143,20 @@ async def get_confirmation_state(user_id: str) -> dict:
     doc_ref = pending_actions_ref.document(user_id)
     doc = await asyncio.to_thread(doc_ref.get) # Removido source='SERVER'
     if doc.exists:
+        data = doc.to_dict()
+        expires_at_str = data.get('expires_at')
+        if expires_at_str:
+            try:
+                expires_at = datetime.fromisoformat(expires_at_str)
+            except ValueError:
+                logger.warning(f"FIRESTORE_UTILS | Invalid expires_at format for user '{user_id}'. Clearing state.")
+                expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+            if expires_at <= datetime.now(timezone.utc):
+                await asyncio.to_thread(doc_ref.delete)
+                logger.info(f"FIRESTORE_UTILS | Confirmation state expired for user '{user_id}'. Auto-cleared.")
+                return {}
         logger.debug(f"FIRESTORE_UTILS | Confirmation state fetched for user '{user_id}'.")
-        return doc.to_dict()
+        return data
     logger.debug(f"FIRESTORE_UTILS | No confirmation state found for user '{user_id}'.")
     return {}
 
@@ -150,8 +164,12 @@ async def set_confirmation_state(user_id: str, state_data: dict):
     db = _initialize_firestore_client_instance()
     pending_actions_ref = get_top_level_collection('pending_actions')
     doc_ref = pending_actions_ref.document(user_id)
+    ttl_expiration = datetime.now(timezone.utc) + timedelta(minutes=CONFIRMATION_STATE_TTL_MINUTES)
+    state_payload = state_data.copy()
+    state_payload['last_updated'] = datetime.now(timezone.utc).isoformat()
+    state_payload.setdefault('expires_at', ttl_expiration.isoformat())
     try:
-        await asyncio.to_thread(doc_ref.set, state_data) # set para garantir criação/substituição completa
+        await asyncio.to_thread(doc_ref.set, state_payload) # set para garantir criação/substituição completa
         logger.info(f"FIRESTORE_UTILS | Confirmation state set for user '{user_id}'.")
     except Exception as e:
         logger.error(f"FIRESTORE_UTILS | Failed to set confirmation state for user '{user_id}': {e}", exc_info=True)
