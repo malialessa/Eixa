@@ -298,7 +298,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             elif view_request == "rotinas_templates_view":
                 response_payload["html_view_data"]["routines"] = all_routines
                 response_payload["response"] = "Aqui estão seus templates de rotina."
-            elif view_request == "diagnostico":
+            elif view_request in ["diagnostico", "diagnosis"]:
                 diagnostic_data = await get_latest_self_eval(user_id)
                 response_payload["html_view_data"]["diagnostico"] = diagnostic_data
                 response_payload["response"] = "Aqui está seu último diagnóstico."
@@ -347,11 +347,11 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 }
                 response_payload["response"] = "Aqui está o seu Dashboard."
 
-            elif view_request == "emotionalMemories":
+            elif view_request in ["emotionalMemories", "memories"]:
                 mems_data = await get_emotional_memories(user_id, 10)
                 response_payload["html_view_data"]["emotional_memories"] = mems_data
                 response_payload["response"] = "Aqui estão suas memórias emocionais recentes."
-            elif view_request == "longTermMemory":
+            elif view_request in ["longTermMemory", "profile"]:
                 if user_profile.get('eixa_interaction_preferences', {}).get('display_profile_in_long_term_memory', False):
                     response_payload["html_view_data"]["long_term_memory"] = user_profile
                     response_payload["response"] = "Aqui está seu perfil de memória de longo prazo."
