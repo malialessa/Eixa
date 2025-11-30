@@ -1,13 +1,18 @@
 import logging
 import asyncio
 import uuid
+import re
 from datetime import date, datetime, timezone # datetime e timezone são importantes para created_at
 from typing import Dict, Any
 
 # ATENÇÃO: eixa_data.py e collections_manager.py devem estar totalmente async
 # FIX: Adicionado get_all_daily_tasks e get_all_projects à importação
 # Eixa_data agora espera 'time' e 'duration_minutes'
-from eixa_data import get_daily_tasks_data, save_daily_tasks_data, get_project_data, save_project_data, get_all_daily_tasks, get_all_projects
+from eixa_data import (
+    get_daily_tasks_data, save_daily_tasks_data, get_project_data, save_project_data, 
+    get_all_daily_tasks, get_all_projects,
+    save_routine_template, apply_routine_to_day, delete_routine_template, get_all_routines
+)
 from collections_manager import get_task_doc_ref, get_project_doc_ref
 # NÃO DEVE HAVER IMPORTAÇÃO DE crud_orchestrator AQUI (para evitar ciclo).
 
@@ -28,6 +33,7 @@ async def _create_task_data(user_id: str, date_str: str, description: str, time_
         "id": task_id,
         "description": description.strip(),
         "completed": False,
+        "status": "todo", # NOVO: Status para Kanban (todo, in_progress, done)
         "time": time_str,
         "duration_minutes": duration_minutes,
         "origin": "user_added", # Por padrão, criada pelo usuário via CRUD
@@ -63,8 +69,8 @@ async def _create_task_data(user_id: str, date_str: str, description: str, time_
         return {"status": "error", "message": "Falha ao salvar a tarefa no banco de dados.", "data": {}, "debug": str(e)}
 
 # MODIFICADO: Adicionados new_time e new_duration
-async def _update_task_status_or_data(user_id: str, date_str: str, task_id: str, new_completed_status: bool = None, new_description: str = None, new_time: str = None, new_duration_minutes: int = None) -> Dict[str, Any]:
-    logger.debug(f"CRUD | Task | _update_task_status_or_data: Entered for user '{user_id}', task_id '{task_id}'. New Desc: '{new_description}', New Time: '{new_time}', New Duration: '{new_duration_minutes}'.")
+async def _update_task_status_or_data(user_id: str, date_str: str, task_id: str, new_completed_status: bool = None, new_description: str = None, new_time: str = None, new_duration_minutes: int = None, new_status: str = None) -> Dict[str, Any]:
+    logger.debug(f"CRUD | Task | _update_task_status_or_data: Entered for user '{user_id}', task_id '{task_id}'. New Desc: '{new_description}', New Time: '{new_time}', New Duration: '{new_duration_minutes}', New Status: '{new_status}'.")
     daily_data = await get_daily_tasks_data(user_id, date_str)
     tasks = daily_data.get("tasks", [])
     task_found = False
@@ -73,6 +79,12 @@ async def _update_task_status_or_data(user_id: str, date_str: str, task_id: str,
         if task.get("id") == task_id:
             if new_completed_status is not None:
                 task["completed"] = new_completed_status
+                # Sync status string if completed bool changes
+                if new_completed_status:
+                    task["status"] = "done"
+                elif task.get("status") == "done":
+                    task["status"] = "todo"
+
             if new_description is not None:
                 task["description"] = new_description.strip()
             # MODIFICADO: Atualizando tempo e duração
@@ -80,6 +92,15 @@ async def _update_task_status_or_data(user_id: str, date_str: str, task_id: str,
                 task["time"] = new_time
             if new_duration_minutes is not None:
                 task["duration_minutes"] = new_duration_minutes
+            
+            # NOVO: Atualizando status string
+            if new_status is not None:
+                task["status"] = new_status
+                # Sync completed bool if status string changes
+                if new_status == "done":
+                    task["completed"] = True
+                else:
+                    task["completed"] = False
             
             # Adicionado: Atualiza updated_at (boa prática para qualquer modificação)
             task["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -131,6 +152,93 @@ async def _delete_task_by_id(user_id: str, date_str: str, task_id: str) -> Dict[
 
     logger.warning(f"CRUD | Task | Delete failed: Task ID '{task_id}' not found for deletion on '{date_str}' for user '{user_id}'.")
     return {"status": "error", "message": "Não foi possível encontrar a tarefa para exclusão."}
+
+async def _bulk_delete_tasks(user_id: str, tasks_payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Exclui várias tarefas em lote. Suporta:
+    1. Lista explícita: data: {"tasks": [{"task_id": "..", "date": "YYYY-MM-DD"}, ...]}
+    2. Filtros: description_contains, date_before, date_range_start, date_range_end.
+    """
+    explicit_list = tasks_payload.get('tasks')
+    deleted = []
+    failed = []
+    changed_days = set()
+
+    if explicit_list and isinstance(explicit_list, list):
+        for item in explicit_list:
+            t_id = item.get('task_id') or item.get('id')
+            d_str = item.get('date')
+            if not (t_id and d_str):
+                failed.append({"task_id": t_id, "date": d_str, "reason": "missing_id_or_date"})
+                continue
+            daily_data = await get_daily_tasks_data(user_id, d_str)
+            tasks = daily_data.get('tasks', [])
+            new_tasks = [t for t in tasks if t.get('id') != t_id]
+            if len(new_tasks) == len(tasks):
+                failed.append({"task_id": t_id, "date": d_str, "reason": "not_found"})
+                continue
+            if new_tasks:
+                daily_data['tasks'] = new_tasks
+                await save_daily_tasks_data(user_id, d_str, daily_data)
+            else:
+                # delete doc if empty
+                agenda_doc_ref = get_task_doc_ref(user_id, d_str)
+                await asyncio.to_thread(agenda_doc_ref.delete)
+            deleted.append({"task_id": t_id, "date": d_str})
+            changed_days.add(d_str)
+    else:
+        # Filter-based deletion
+        desc_contains = tasks_payload.get('description_contains')
+        date_before = tasks_payload.get('date_before')
+        range_start = tasks_payload.get('date_range_start')
+        range_end = tasks_payload.get('date_range_end')
+        agenda_all = await get_all_daily_tasks(user_id)
+        for d_str, day_data in agenda_all.items():
+            try:
+                day_date = date.fromisoformat(d_str)
+            except Exception:
+                continue
+            if date_before:
+                try:
+                    if day_date >= date.fromisoformat(date_before):
+                        continue
+                except Exception:
+                    pass
+            if range_start and range_end:
+                try:
+                    if not (date.fromisoformat(range_start) <= day_date <= date.fromisoformat(range_end)):
+                        continue
+                except Exception:
+                    pass
+            tasks = day_data.get('tasks', [])
+            keep = []
+            removed_here = []
+            for t in tasks:
+                remove = False
+                if desc_contains and isinstance(t.get('description'), str):
+                    if desc_contains.lower() in t['description'].lower():
+                        remove = True
+                if remove:
+                    removed_here.append(t)
+                else:
+                    keep.append(t)
+            if removed_here:
+                if keep:
+                    day_data['tasks'] = keep
+                    await save_daily_tasks_data(user_id, d_str, day_data)
+                else:
+                    agenda_doc_ref = get_task_doc_ref(user_id, d_str)
+                    await asyncio.to_thread(agenda_doc_ref.delete)
+                for t in removed_here:
+                    deleted.append({"task_id": t.get('id'), "date": d_str})
+                changed_days.add(d_str)
+
+    agenda_data = await get_all_daily_tasks(user_id)
+    return {
+        "status": "success" if deleted else "no_changes",
+        "message": f"{len(deleted)} tarefas excluídas." if deleted else "Nenhuma tarefa correspondia aos critérios.",
+        "data": {"deleted_count": len(deleted), "failed": failed},
+        "html_view_data": {"agenda": agenda_data}
+    }
 
 # --- Funções CRUD Internas para Projetos (Project) ---
 
@@ -244,6 +352,44 @@ async def _delete_project_fully(user_id: str, project_id: str) -> Dict[str, Any]
         logger.warning(f"CRUD | Project | Delete failed: Project ID '{project_id}' not found for user '{user_id}'.")
         return {"status": "error", "message": "Não foi possível encontrar o projeto para exclusão."}
 
+# --- Funções CRUD Internas para Rotinas (Routine) ---
+
+async def _create_routine(user_id: str, routine_data: Dict[str, Any]) -> Dict[str, Any]:
+    logger.debug(f"CRUD | Routine | _create_routine: Entered for user '{user_id}'. Name: '{routine_data.get('name')}'")
+    if not routine_data.get("name"):
+        return {"status": "error", "message": "O nome da rotina é obrigatório."}
+    
+    # Ensure ID
+    if not routine_data.get("id"):
+        routine_data["id"] = str(uuid.uuid4())
+    
+    try:
+        await save_routine_template(user_id, routine_data)
+        routines = await get_all_routines(user_id)
+        return {"status": "success", "message": "Rotina criada com sucesso!", "html_view_data": {"routines": routines}}
+    except Exception as e:
+        logger.error(f"CRUD | Routine | Failed to create routine: {e}", exc_info=True)
+        return {"status": "error", "message": f"Erro ao criar rotina: {str(e)}"}
+
+async def _apply_routine(user_id: str, routine_id: str, date_str: str) -> Dict[str, Any]:
+    logger.debug(f"CRUD | Routine | _apply_routine: Applying '{routine_id}' to '{date_str}' for user '{user_id}'")
+    try:
+        await apply_routine_to_day(user_id, routine_id, date_str)
+        agenda_data = await get_all_daily_tasks(user_id)
+        return {"status": "success", "message": "Rotina aplicada com sucesso!", "html_view_data": {"agenda": agenda_data}}
+    except Exception as e:
+        logger.error(f"CRUD | Routine | Failed to apply routine: {e}", exc_info=True)
+        return {"status": "error", "message": f"Erro ao aplicar rotina: {str(e)}"}
+
+async def _delete_routine(user_id: str, routine_id: str) -> Dict[str, Any]:
+    try:
+        await delete_routine_template(user_id, routine_id)
+        routines = await get_all_routines(user_id)
+        return {"status": "success", "message": "Rotina excluída com sucesso!", "html_view_data": {"routines": routines}}
+    except Exception as e:
+        logger.error(f"CRUD | Routine | Failed to delete routine: {e}", exc_info=True)
+        return {"status": "error", "message": f"Erro ao excluir rotina: {str(e)}"}
+
 # --- Orquestrador Principal de Ações CRUD (Chamado pelo Frontend) ---
 async def orchestrate_crud_action(payload: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -268,8 +414,11 @@ async def orchestrate_crud_action(payload: Dict[str, Any]) -> Dict[str, Any]:
     logger.debug(f"CRUD_ORCHESTRATOR_ENTERED | Payload received: {payload}") 
 
     user_id = payload.get('user_id')
-    item_type = payload.get('item_type')
-    action = payload.get('action')
+    # Normaliza item_type e action para evitar falhas por espaços ou capitalização
+    raw_item_type = payload.get('item_type')
+    item_type = raw_item_type.strip().lower() if isinstance(raw_item_type, str) else raw_item_type
+    raw_action = payload.get('action')
+    action = raw_action.strip().lower() if isinstance(raw_action, str) else raw_action
     data = payload.get('data', {}) 
     item_id = payload.get('item_id')
 
@@ -288,23 +437,26 @@ async def orchestrate_crud_action(payload: Dict[str, Any]) -> Dict[str, Any]:
             time_str = data.get('time', "00:00") 
             duration_minutes = data.get('duration_minutes', 0) 
 
-            if not date_str:
+            is_bulk_delete = (action == 'bulk_delete')
+
+            if not is_bulk_delete and not date_str:
                 logger.error(f"CRUD | Task | Missing date for action '{action}' for user '{user_id}'. Payload data: {data}")
                 return {"status": "error", "message": "A data é obrigatória para operações de tarefa.", "data": {}, "debug_info": debug_info}
 
-            try:
-                date.fromisoformat(date_str)
-                # Adicionado validação mais rigorosa para o formato de hora
-                if time_str is not None: # Pode ser None se não for relevante para a ação, ex: update só de description
-                    if not isinstance(time_str, str) or not re.match(r'^(?:2[0-3]|[01]?[0-9]):(?:[0-5]?[0-9])$', time_str):
-                        raise ValueError(f"Formato de hora inválido: '{time_str}'. Use HH:MM (ex: '09:00' ou '14:30').")
-                if duration_minutes is not None:
-                    if not isinstance(duration_minutes, int) or duration_minutes < 0:
-                        raise ValueError(f"Duração inválida: '{duration_minutes}'. Deve ser um número inteiro positivo.")
+            if not is_bulk_delete:
+                try:
+                    date.fromisoformat(date_str)
+                    # Adicionado validação mais rigorosa para o formato de hora
+                    if time_str is not None: # Pode ser None se não for relevante para a ação, ex: update só de description
+                        if not isinstance(time_str, str) or not re.match(r'^(?:2[0-3]|[01]?[0-9]):(?:[0-5]?[0-9])$', time_str):
+                            raise ValueError(f"Formato de hora inválido: '{time_str}'. Use HH:MM (ex: '09:00' ou '14:30').")
+                    if duration_minutes is not None:
+                        if not isinstance(duration_minutes, int) or duration_minutes < 0:
+                            raise ValueError(f"Duração inválida: '{duration_minutes}'. Deve ser um número inteiro positivo.")
 
-            except (ValueError, TypeError) as e:
-                logger.error(f"CRUD | Task | Invalid date/time/duration format for user '{user_id}': {e}. Payload data: {data}", exc_info=True)
-                return {"status": "error", "message": f"Formato de data/hora/duração inválido: {e}. Data: {date_str}, Hora: {time_str}, Duração: {duration_minutes}.", "data": {}, "debug_info": debug_info}
+                except (ValueError, TypeError) as e:
+                    logger.error(f"CRUD | Task | Invalid date/time/duration format for user '{user_id}': {e}. Payload data: {data}", exc_info=True)
+                    return {"status": "error", "message": f"Formato de data/hora/duração inválido: {e}. Data: {date_str}, Hora: {time_str}, Duração: {duration_minutes}.", "data": {}, "debug_info": debug_info}
 
 
             if action == 'create':
@@ -337,6 +489,11 @@ async def orchestrate_crud_action(payload: Dict[str, Any]) -> Dict[str, Any]:
                     return {"status": "error", "message": "O ID da tarefa é obrigatório.", "data": {}, "debug_info": debug_info}
                 return await _delete_task_by_id(user_id, date_str, item_id)
             
+            elif is_bulk_delete:
+                # bulk delete não exige date_str global; usa datas internas ou filtros
+                logger.debug(f"CRUD | Task | Bulk delete acionado. Data global ignorada. Payload filtros: {data}")
+                return await _bulk_delete_tasks(user_id, data)
+            
             else: # Ação desconhecida
                 logger.error(f"CRUD | Task | Unknown action '{action}' for task type for user '{user_id}'. Payload data: {data}")
                 return {"status": "error", "message": "Ação de tarefa não reconhecida.", "data": {}, "debug_info": debug_info}
@@ -365,6 +522,46 @@ async def orchestrate_crud_action(payload: Dict[str, Any]) -> Dict[str, Any]:
             else: # Ação desconhecida
                 logger.error(f"CRUD | Project | Unknown action '{action}' for project type for user '{user_id}'. Payload data: {data}")
                 return {"status": "error", "message": "Ação de projeto não reconhecida.", "data": {}, "debug_info": debug_info}
+
+        elif item_type == 'routine':
+            logger.debug(f"CRUD | orchestrate_crud_action: Routine action '{action}' detected.")
+            if action == 'create':
+                return await _create_routine(user_id, data)
+            elif action == 'apply_routine':
+                if not item_id or not data.get('date'): # date is passed in data usually, but let's check payload structure
+                    # Frontend sends: item_id=routineId, date=... in payload root or data?
+                    # Frontend: payload = { ..., item_id: routineId, date: ... }
+                    # orchestrate_crud_action extracts 'date' from 'data' usually?
+                    # Let's check how I implemented frontend:
+                    # payload = { ..., item_id: routineId, date: ... }
+                    # But orchestrate_crud_action does: date_str = data.get('date') for tasks.
+                    # For routines, let's look at payload again.
+                    pass
+                
+                # Re-reading frontend implementation:
+                # payload = { request_type: 'crud_action', item_type: 'routine', action: 'apply_routine', item_id: routineId, date: ... }
+                # orchestrate_crud_action: user_id = payload.get('user_id'), item_type = payload.get('item_type'), action = payload.get('action'), data = payload.get('data', {}), item_id = payload.get('item_id')
+                # So 'date' is in payload root? No, wait.
+                # Frontend: date: new Date()...
+                # Backend orchestrate_crud_action:
+                # date_str = data.get('date') is used for tasks.
+                # But for apply_routine, the date might be in payload directly or data.
+                # Let's assume I should put it in 'data' in frontend or handle it here.
+                # In frontend I did: date: ... (at root level of payload object)
+                # But orchestrate_crud_action does NOT extract 'date' from root payload, only 'data', 'item_id', 'user_id', 'item_type', 'action'.
+                
+                # FIX: I should check payload.get('date') as well.
+                target_date = payload.get('date') or data.get('date')
+                if not target_date:
+                     return {"status": "error", "message": "Data é obrigatória para aplicar rotina."}
+                return await _apply_routine(user_id, item_id, target_date)
+
+            elif action == 'delete':
+                if not item_id:
+                    return {"status": "error", "message": "ID da rotina obrigatório."}
+                return await _delete_routine(user_id, item_id)
+            else:
+                return {"status": "error", "message": "Ação de rotina desconhecida."}
 
         logger.error(f"CRUD | Unknown item type: '{item_type}' for user '{user_id}'. Payload: {payload}")
         return {"status": "error", "message": "Tipo de item não reconhecido.", "data": {}, "debug_info": debug_info}

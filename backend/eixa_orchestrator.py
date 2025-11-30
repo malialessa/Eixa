@@ -13,6 +13,8 @@ from memory_utils import (
     add_emotional_memory,
     get_emotional_memories,
     get_sabotage_patterns,
+    save_mood_log,
+    get_mood_logs,
 )
 from eixa_data import (
     get_daily_tasks_data, save_daily_tasks_data, get_project_data, save_project_data, 
@@ -49,7 +51,11 @@ from config import DEFAULT_MAX_OUTPUT_TOKENS, DEFAULT_TEMPERATURE, DEFAULT_TIMEZ
 
 from input_parser import parse_incoming_input
 from app_config_loader import get_eixa_templates
-from crud_orchestrator import orchestrate_crud_action
+from crud_orchestrator import (
+    orchestrate_crud_action,
+    _create_task_data, _update_task_status_or_data, _delete_task_by_id,
+    _create_project_data, _update_project_data, _delete_project_fully
+)
 from profile_settings_manager import parse_and_update_profile_settings, update_profile_from_inferred_data
 
 from google_calendar_utils import GoogleCalendarUtils, GOOGLE_CALENDAR_SCOPES
@@ -58,7 +64,17 @@ logger = logging.getLogger(__name__)
 
 google_calendar_auth_manager = GoogleCalendarUtils()
 
-async def _extract_llm_action_intent(user_id: str, user_message: str, history: list, gemini_api_key: str, gemini_text_model: str, user_profile: Dict[str, Any], all_routines: List[Dict[str, Any]]) -> dict | None:
+async def _extract_llm_action_intent(
+    user_id: str,
+    user_message: str,
+    history: list,
+    gemini_api_key: str,
+    gemini_text_model: str,
+    user_profile: Dict[str, Any],
+    all_routines: List[Dict[str, Any]],
+    gcp_project_id: str | None = None,
+    region: str | None = None
+) -> dict | None:
     """
     Extrai intenções de ação (CRUD, Rotinas) da mensagem do usuário usando o LLM.
     NÃO INFERE MAIS AÇÕES DE GOOGLE CALENDAR A PARTIR DO CHAT.
@@ -286,6 +302,51 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 diagnostic_data = await get_latest_self_eval(user_id)
                 response_payload["html_view_data"]["diagnostico"] = diagnostic_data
                 response_payload["response"] = "Aqui está seu último diagnóstico."
+            elif view_request == "dashboard":
+                # Dashboard Data Aggregation
+                
+                # 2. Focus Task (Next uncompleted task for today)
+                today_str = date.today().isoformat()
+                daily_data = await get_daily_tasks_data(user_id, today_str)
+                tasks = daily_data.get("tasks", [])
+                pending_tasks = [t for t in tasks if not t.get("completed")]
+                # Sort by time if available
+                pending_tasks.sort(key=lambda x: x.get("time", "23:59"))
+                focus_task = pending_tasks[0] if pending_tasks else None
+
+                # 1. Greeting & Status Hint (Real Data)
+                pending_count = len(pending_tasks)
+                if pending_count == 0:
+                    status_hint = "Tudo em dia!"
+                elif pending_count == 1:
+                    status_hint = "1 tarefa pendente"
+                else:
+                    status_hint = f"{pending_count} tarefas pendentes"
+
+                greeting_data = {
+                    "user_name": user_profile.get("name", "Usuário"),
+                    "greeting_time": "Bom dia" if datetime.now().hour < 12 else "Boa tarde" if datetime.now().hour < 18 else "Boa noite",
+                    "status_hint": status_hint
+                }
+
+                # 3. Stats (Simple completion rate for today)
+                total_tasks = len(tasks)
+                completed_tasks = len([t for t in tasks if t.get("completed")])
+                completion_rate = int((completed_tasks / total_tasks * 100)) if total_tasks > 0 else 0
+                
+                stats_data = {
+                    "today_completion": completion_rate,
+                    "total_tasks": total_tasks,
+                    "completed_tasks": completed_tasks
+                }
+
+                response_payload["html_view_data"]["dashboard"] = {
+                    "greeting": greeting_data,
+                    "focus_task": focus_task,
+                    "stats": stats_data
+                }
+                response_payload["response"] = "Aqui está o seu Dashboard."
+
             elif view_request == "emotionalMemories":
                 mems_data = await get_emotional_memories(user_id, 10)
                 response_payload["html_view_data"]["emotional_memories"] = mems_data
@@ -304,6 +365,24 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 response_payload["html_view_data"]["google_calendar_connected_status"] = is_connected
                 response_payload["response"] = f"Status de conexão Google Calendar: {'Conectado' if is_connected else 'Não Conectado'}."
                 logger.info(f"ORCHESTRATOR | Google Calendar connection status requested. Is Connected: {is_connected}")
+            
+            # NOVO: View Request para Kanban
+            elif view_request == "kanban":
+                # Fetch Projects
+                projects_data = await get_all_projects(user_id)
+                
+                # Fetch Tasks (Today + Pending from past?)
+                # For now, let's just get today's tasks
+                today_str = date.today().isoformat()
+                daily_data = await get_daily_tasks_data(user_id, today_str)
+                tasks_data = daily_data.get("tasks", [])
+                
+                response_payload["html_view_data"]["kanban"] = {
+                    "projects": projects_data,
+                    "tasks": tasks_data
+                }
+                response_payload["response"] = "Aqui está o seu quadro Kanban."
+
             else:
                 response_payload["status"] = "error"
                 response_payload["response"] = "View solicitada inválida."
@@ -314,8 +393,88 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         finally:
             duration_ms = (time.perf_counter() - view_timer) * 1000.0
             record_latency(f"view.{view_request}", duration_ms, view_success)
+
+    # --- 3. Processamento de Requisições de Update de Perfil ---
+    if request_type == "update_profile":
+        logger.debug(f"ORCHESTRATOR | Processing update_profile request.")
+        try:
+            profile_data = action_data if action_data else {}
+            # Basic validation could go here
+            
+            # Update Firestore
+            await set_firestore_document('user_profiles', user_id, profile_data, merge=True)
+            
+            response_payload["status"] = "success"
+            response_payload["response"] = "Perfil atualizado com sucesso."
+            return {"response_payload": response_payload}
+        except Exception as e:
+            logger.error(f"ORCHESTRATOR | Error updating profile: {e}", exc_info=True)
+            response_payload["status"] = "error"
+            response_payload["response"] = "Erro ao atualizar perfil."
+            return {"response_payload": response_payload}
     
-    # --- 3. Processamento de Requisições DIRETAS de Google Calendar (NÃO via LLM) ---
+            response_payload["response"] = "Erro ao atualizar perfil."
+            return {"response_payload": response_payload}
+
+    # --- 4. Processamento de Requisições de Update de Status Kanban ---
+    if request_type == "update_kanban_status":
+        logger.debug(f"ORCHESTRATOR | Processing update_kanban_status request.")
+        try:
+            item_type = action_data.get("item_type") # 'project' or 'task'
+            item_id = action_data.get("item_id")
+            new_status = action_data.get("new_status") # 'todo', 'in_progress', 'done' (or 'completed')
+            
+            if item_type == "project":
+                # Map status if needed, but projects use 'open', 'completed', etc.
+                # Assuming frontend sends 'todo', 'in_progress', 'done'
+                project_status_map = {
+                    "todo": "open",
+                    "in_progress": "in_progress",
+                    "done": "completed"
+                }
+                mapped_status = project_status_map.get(new_status, new_status)
+                
+                result = await _update_project_data(user_id, item_id, {"status": mapped_status})
+                
+            elif item_type == "task":
+                # Tasks use 'completed' bool and now 'status' string
+                # We need the date for the task. Assuming today for now or we need to find it.
+                # Limitation: _update_task_status_or_data requires date_str.
+                # If we don't have it, we might need to search or pass it from frontend.
+                # Let's assume frontend passes 'date' or we default to today (risky if task is old).
+                
+                task_date = action_data.get("date", date.today().isoformat())
+                
+                result = await _update_task_status_or_data(
+                    user_id, task_date, item_id, 
+                    new_status=new_status
+                )
+            else:
+                result = {"status": "error", "message": "Tipo de item inválido."}
+
+            response_payload["status"] = result.get("status")
+            response_payload["response"] = result.get("message")
+            # Refresh Kanban data
+            if result.get("status") == "success":
+                 # Re-fetch data similar to view_request='kanban'
+                projects_data = await get_all_projects(user_id)
+                today_str = date.today().isoformat()
+                daily_data = await get_daily_tasks_data(user_id, today_str)
+                tasks_data = daily_data.get("tasks", [])
+                response_payload["html_view_data"]["kanban"] = {
+                    "projects": projects_data,
+                    "tasks": tasks_data
+                }
+
+            return {"response_payload": response_payload}
+
+        except Exception as e:
+            logger.error(f"ORCHESTRATOR | Error updating kanban status: {e}", exc_info=True)
+            response_payload["status"] = "error"
+            response_payload["response"] = "Erro ao atualizar status no Kanban."
+            return {"response_payload": response_payload}
+    
+    # --- 5. Processamento de Requisições DIRETAS de Google Calendar (NÃO via LLM) ---
     if request_type == "google_calendar_action":
         logger.debug(f"ORCHESTRATOR | Processing direct Google Calendar action: {action}")
         result = {"status": "error", "message": "Ação de Google Calendar não reconhecida ou dados incompletos."}
@@ -548,7 +707,17 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
 
     # 7.3. Extração de Intenções CRUD/Rotina pela LLM
     logger.debug(f"ORCHESTRATOR | Calling _extract_llm_action_intent.")
-    action_intent_data = await _extract_llm_action_intent(user_id, user_message_for_processing, full_history, gemini_api_key, gemini_text_model, user_profile, all_routines)
+    action_intent_data = await _extract_llm_action_intent(
+        user_id,
+        user_message_for_processing,
+        full_history,
+        gemini_api_key,
+        gemini_text_model,
+        user_profile,
+        all_routines,
+        gcp_project_id=gcp_project_id,
+        region=region
+    )
     intent_detected_in_orchestrator = action_intent_data.get("intent_detected", "conversa")
     logger.debug(f"ORCHESTRATOR | LLM intent extraction result: {intent_detected_in_orchestrator}")
 
@@ -584,9 +753,26 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             task_date = provisional_payload_data.get("date") 
             task_time = provisional_payload_data.get("time")
             task_duration = provisional_payload_data.get("duration_minutes")
+            task_status = item_details.get("status")
 
-            if action == 'create' and (not task_description or not task_date or not task_time):
-                response_payload["response"] = "Para criar uma tarefa, preciso da descrição, data e hora. Por favor, seja mais específico."
+            # Fallback inteligente de data: se LLM não fornecer, usar hoje (UTC ajustado ao timezone do usuário se disponível)
+            if action == 'create' and not task_date:
+                try:
+                    user_tz_name = user_profile.get('timezone', DEFAULT_TIMEZONE)
+                    tz_obj = pytz.timezone(user_tz_name)
+                    task_date = datetime.now(tz_obj).date().isoformat()
+                    logger.info(f"ORCHESTRATOR | Fallback date aplicado para criação de tarefa sem data explícita: {task_date} (timezone {user_tz_name}).")
+                except Exception:
+                    task_date = datetime.utcnow().date().isoformat()
+                    logger.warning(f"ORCHESTRATOR | Timezone inválido '{user_profile.get('timezone')}'. Usando UTC hoje {task_date} como fallback de data.")
+
+            # Fallback de hora: se omitida, assumir '00:00' (início genérico do dia)
+            if action == 'create' and not task_time:
+                task_time = "00:00"
+                logger.info("ORCHESTRATOR | Fallback time aplicado (00:00) para criação de tarefa sem hora explícita.")
+
+            if action == 'create' and not task_description:
+                response_payload["response"] = "Para criar uma tarefa, preciso da descrição. Por favor, informe o que deseja adicionar."
                 response_payload["status"] = "error"
                 if mode_debug_on: response_payload["debug_info"].setdefault("orchestrator_debug_log", []).extend(debug_info_logs)
                 await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
@@ -612,6 +798,25 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             provisional_payload['data']['date'] = task_date
             provisional_payload['data']['time'] = task_time
             provisional_payload['data']['duration_minutes'] = task_duration
+            if task_status and action == 'update':
+                provisional_payload['data']['status'] = task_status
+
+            # Vinculação automática a projeto se o nome aparecer na descrição (melhor esforço)
+            try:
+                all_projects_map = await get_all_projects(user_id)
+                # all_projects_map esperado: {project_id: {data...}}
+                matched_project_id = None
+                if isinstance(all_projects_map, dict):
+                    for p_id, p_data in all_projects_map.items():
+                        p_name = (p_data.get('name') or '').strip()
+                        if p_name and re.search(rf"\b{re.escape(p_name)}\b", task_description, re.IGNORECASE):
+                            matched_project_id = p_id
+                            break
+                if matched_project_id:
+                    provisional_payload['data']['project_id'] = matched_project_id
+                    logger.info(f"ORCHESTRATOR | Projeto '{matched_project_id}' vinculado automaticamente à tarefa pela descrição.")
+            except Exception as e:
+                logger.warning(f"ORCHESTRATOR | Falha ao tentar vincular projeto automático: {e}")
             if action == 'complete':
                 provisional_payload['action'] = 'update'
                 provisional_payload['data']['completed'] = True
@@ -619,7 +824,9 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
             if not confirmation_message:
                 time_display = f" às {task_time}" if task_time else ""
                 duration_display = f" por {task_duration} minutos" if task_duration else ""
-                if action == 'create': confirmation_message = f"Confirma que deseja adicionar a tarefa '{task_description}' para {task_date}{time_display}{duration_display}?"
+                if action == 'create':
+                    proj_part = "" if not provisional_payload['data'].get('project_id') else " (vinculada a projeto)"
+                    confirmation_message = f"Confirma que deseja adicionar a tarefa '{task_description}' para {task_date}{time_display}{duration_display}{proj_part}?"
                 elif action == 'complete': confirmation_message = f"Confirma que deseja marcar a tarefa '{task_description}' como concluída?"
                 elif action == 'update': confirmation_message = f"Confirma que deseja atualizar a tarefa '{task_description}'?"
                 elif action == 'delete': confirmation_message = f"Confirma que deseja excluir a tarefa '{task_description}'?"
@@ -671,12 +878,21 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 provisional_payload['date'] = target_date_for_apply 
                 provisional_payload['data'] = {"name": routine_name_from_llm, "id": routine_id_from_llm} 
 
+                # Fallback de data: se LLM não fornecer, assume hoje no timezone do usuário
                 if not target_date_for_apply:
-                    response_payload["response"] = "Para aplicar uma rotina, preciso saber a data alvo (ex: 'para amanhã')."
-                    response_payload["status"] = "error"
-                    if mode_debug_on: response_payload["debug_info"].setdefault("orchestrator_debug_log", []).extend(debug_info_logs)
-                    await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
-                    return {"response_payload": response_payload}
+                    try:
+                        user_tz_name = user_profile.get('timezone', DEFAULT_TIMEZONE)
+                        tz_obj = pytz.timezone(user_tz_name)
+                        inferred_date = datetime.now(tz_obj).date().isoformat()
+                        target_date_for_apply = inferred_date
+                        provisional_payload['date'] = inferred_date
+                        logger.info(f"ORCHESTRATOR | Fallback date aplicado para apply_routine sem data explícita: {inferred_date} (timezone {user_tz_name}).")
+                    except Exception:
+                        inferred_date = datetime.utcnow().date().isoformat()
+                        target_date_for_apply = inferred_date
+                        provisional_payload['date'] = inferred_date
+                        logger.warning(f"ORCHESTRATOR | Timezone inválido em apply_routine. Usando UTC hoje {inferred_date} como fallback.")
+                    # Ajusta mensagem de confirmação posteriormente
 
                 if not routine_id_from_llm and routine_name_from_llm:
                     found_routine = next((r for r in all_routines if r.get('name', '').lower() == routine_name_from_llm.lower()), None)
@@ -926,7 +1142,56 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
     contexto_perfil_str += "\n".join(profile_summary_parts) if profile_summary_parts else "   Nenhum dado de perfil detalhado disponível.\n"
     contexto_perfil_str += "--- FIM DO CONTEXTO DE PERFIL ---\n\n"
 
-    final_system_instruction = contexto_temporal + contexto_critico + contexto_perfil_str + base_persona_with_name
+    # Instruções de Rich UI Components para o LLM
+    rich_ui_instructions = """
+
+--- INSTRUÇÕES PARA RICH UI COMPONENTS ---
+Você pode enriquecer suas respostas com componentes visuais interativos usando a sintaxe ```rich-ui```. Use quando apropriado:
+
+1. **Calendar Invite** (quando mencionar eventos/reuniões):
+```rich-ui
+{
+  "type": "calendar_invite",
+  "title": "Reunião de Planejamento",
+  "date": "2025-11-30",
+  "time": "14:00",
+  "duration": "60min"
+}
+```
+
+2. **Chart** (quando mostrar progresso/estatísticas):
+```rich-ui
+{
+  "type": "chart",
+  "title": "Tarefas Concluídas",
+  "chartType": "line",
+  "data": {
+    "labels": ["Seg", "Ter", "Qua", "Qui", "Sex"],
+    "values": [3, 5, 4, 7, 6]
+  }
+}
+```
+
+3. **Quick Action** (quando sugerir ações rápidas):
+```rich-ui
+{
+  "type": "quick_action",
+  "action": "create_task",
+  "label": "Criar Tarefa",
+  "icon": "add_task"
+}
+```
+
+**REGRAS:**
+- Use Rich UI APENAS quando houver contexto claro (datas, dados, ações)
+- NÃO use se faltar informações (date, time, labels, etc.)
+- Coloque o bloco ```rich-ui``` APÓS sua resposta textual
+- Um bloco Rich UI por resposta (escolha o mais relevante)
+--- FIM DAS INSTRUÇÕES RICH UI ---
+
+"""
+    
+    final_system_instruction = contexto_temporal + contexto_critico + contexto_perfil_str + rich_ui_instructions + base_persona_with_name
 
     # Chamada LLM genérica
     logger.debug(f"ORCHESTRATOR | Calling Gemini API for generic response. Model: {gemini_final_model}")
@@ -948,6 +1213,61 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         response_payload["status"] = "error"
         logger.error(f"ORCHESTRATOR | Gemini response was None or empty for user '{user_id}'. Setting response_payload status to 'error'.", exc_info=True)
     else:
+        # Detecção de Mood Logs: padrão "humor X/10" ou "estou me sentindo X/10"
+        mood_match = re.search(r'(?:humor|sentindo|sinto)\s*(?:está|estou|me)?\s*(\d+)\s*(?:/|de)\s*10', final_ai_response, re.IGNORECASE)
+        if mood_match:
+            mood_score = int(mood_match.group(1))
+            if 1 <= mood_score <= 10:
+                mood_note = user_message_for_processing[:200] if user_message_for_processing else ""
+                await save_mood_log(user_id, mood_score, mood_note)
+                logger.info(f"ORCHESTRATOR | Mood log saved for user '{user_id}': score={mood_score}")
+        
+        # Detecção de contexto para Rich UI Components
+        # 1. Calendar Invite: se mencionar "reunião", "evento", "agendamento"
+        if re.search(r'\b(reunião|evento|agendamento|encontro|call|meet)\b', final_ai_response, re.IGNORECASE):
+            # Extrair datas e horários para gerar convite
+            date_match = re.search(r'(\d{4}-\d{2}-\d{2})', final_ai_response)
+            time_match = re.search(r'(\d{1,2}:\d{2})', final_ai_response)
+            if date_match and time_match:
+                rich_ui_calendar = {
+                    "type": "calendar_invite",
+                    "title": "Reunião Agendada",
+                    "date": date_match.group(1),
+                    "time": time_match.group(1),
+                    "duration": "60min"
+                }
+                final_ai_response += f"\n\n```rich-ui\n{json.dumps(rich_ui_calendar, ensure_ascii=False)}\n```"
+                logger.debug(f"ORCHESTRATOR | Rich UI calendar_invite generated for user '{user_id}'")
+        
+        # 2. Chart: se mencionar "progresso", "estatística", "gráfico", "desempenho"
+        if re.search(r'\b(progresso|estatística|gráfico|desempenho|evolução|avanço)\b', final_ai_response, re.IGNORECASE):
+            # Buscar mood logs recentes para gerar gráfico de humor
+            recent_mood_logs = await get_mood_logs(user_id, 7)
+            if len(recent_mood_logs) >= 3:
+                labels = [log.get('created_at', '')[:10] for log in reversed(recent_mood_logs)]
+                values = [log.get('mood_score', 0) for log in reversed(recent_mood_logs)]
+                rich_ui_chart = {
+                    "type": "chart",
+                    "title": "Evolução do Humor (7 dias)",
+                    "chartType": "line",
+                    "data": {
+                        "labels": labels,
+                        "values": values
+                    }
+                }
+                final_ai_response += f"\n\n```rich-ui\n{json.dumps(rich_ui_chart, ensure_ascii=False)}\n```"
+                logger.debug(f"ORCHESTRATOR | Rich UI chart generated for user '{user_id}'")
+        
+        # 3. Quick Action: se mencionar "tarefa rápida", "adicionar", "lembrete"
+        if re.search(r'\b(tarefa rápida|adicionar tarefa|criar lembrete|novo item)\b', final_ai_response, re.IGNORECASE):
+            rich_ui_action = {
+                "type": "quick_action",
+                "action": "create_task",
+                "label": "Criar Tarefa Rápida",
+                "icon": "add_task"
+            }
+            final_ai_response += f"\n\n```rich-ui\n{json.dumps(rich_ui_action, ensure_ascii=False)}\n```"
+            logger.debug(f"ORCHESTRATOR | Rich UI quick_action generated for user '{user_id}'")
         profile_update_json = None
         json_match = re.search(r'```json\s*(\{.*?\})\s*```', final_ai_response, re.DOTALL)
         if json_match:

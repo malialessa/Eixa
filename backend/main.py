@@ -13,6 +13,8 @@ from crud_orchestrator import orchestrate_crud_action
 from config import GEMINI_TEXT_MODEL, GEMINI_VISION_MODEL
 from google_calendar_utils import GoogleCalendarUtils
 from bigquery_utils import initialize_bigquery, bq_manager
+from image_handler import upload_image_to_gcs, upload_avatar_to_gcs
+from firestore_utils import set_firestore_document, get_user_profile_data
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -96,6 +98,7 @@ async def google_auth():
     O frontend deve chamar este endpoint com o `user_id` como query parameter.
     """
     user_id = request.args.get('user_id')
+    account_label = request.args.get('account_label')
     if not user_id:
         logger.error("/auth/google: Missing user_id for OAuth initiation.")
         return jsonify({"status": "error", "message": "Parâmetro 'user_id' é obrigatório para iniciar a autenticação Google."}), 400
@@ -105,7 +108,7 @@ async def google_auth():
         return jsonify({"status": "error", "message": "Erro de configuração do servidor para autenticação Google. Contate o suporte."}), 500
 
     try:
-        authorization_url = await google_calendar_utils_instance.get_auth_url(user_id=user_id)
+        authorization_url = await google_calendar_utils_instance.get_auth_url(user_id=user_id, account_label=account_label)
         
         if authorization_url:
             logger.info(f"/auth/google: Generated authorization URL for user {user_id}. Returning URL.")
@@ -116,6 +119,37 @@ async def google_auth():
     except Exception as e:
         logger.critical(f"/auth/google: Unexpected error during OAuth URL generation for user {user_id}: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Erro interno ao preparar autenticação Google."}), 500
+
+@app.route('/calendar/accounts', methods=['GET'])
+async def list_calendar_accounts():
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return jsonify({"status": "error", "message": "'user_id' é obrigatório."}), 400
+    if google_calendar_utils_instance is None:
+        return jsonify({"status": "error", "message": "Calendar utils indisponível."}), 500
+    try:
+        result = await google_calendar_utils_instance.list_accounts(user_id)
+        return jsonify({"status": "success", **result}), 200
+    except Exception as e:
+        logger.error(f"/calendar/accounts: Falha ao listar contas para {user_id}: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": "Falha ao listar contas."}), 500
+
+@app.route('/calendar/accounts/select', methods=['POST'])
+async def select_calendar_account():
+    body = request.get_json(silent=True) or {}
+    user_id = body.get('user_id')
+    account_id = body.get('account_id')
+    if not user_id or not account_id:
+        return jsonify({"status": "error", "message": "'user_id' e 'account_id' são obrigatórios."}), 400
+    if google_calendar_utils_instance is None:
+        return jsonify({"status": "error", "message": "Calendar utils indisponível."}), 500
+    try:
+        result = await google_calendar_utils_instance.select_active_account(user_id, account_id)
+        code = 200 if result.get('status') == 'success' else 404
+        return jsonify(result), code
+    except Exception as e:
+        logger.error(f"/calendar/accounts/select: Falha ao selecionar conta '{account_id}' para {user_id}: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": "Falha ao selecionar conta."}), 500
 
 # === ROTA: Callback para o Google OAuth ===
 @app.route("/oauth2callback", methods=["GET"])
@@ -290,6 +324,98 @@ async def actions_api():
     except Exception as e:
         logger.critical(f"/actions: Failed to process payload for user {user_id}: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Erro interno inesperado."}), 500, headers
+
+# === ROTA: Upload de imagens (chat, avatar, anexos) ===
+@app.route("/upload", methods=["POST", "OPTIONS"])
+async def upload_api():
+    """
+    Endpoint para upload de imagens (avatares, imagens de chat, anexos).
+    Aceita base64 image data e faz upload para Google Cloud Storage.
+    
+    Request JSON:
+    {
+        "user_id": "user123",
+        "image_data": "data:image/png;base64,iVBORw0KGgo...",
+        "upload_type": "avatar" | "chat_image",
+        "filename": "optional_custom_filename.png"
+    }
+    
+    Response JSON:
+    {
+        "status": "success" | "error",
+        "image_url": "https://storage.googleapis.com/...",
+        "message": "Upload successful"
+    }
+    """
+    headers = {
+        'Access-Control-Allow-Origin': FRONTEND_URL,
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Max-Age': '3600'
+    }
+    
+    if not FRONTEND_URL:
+        headers['Access-Control-Allow-Origin'] = '*'
+    
+    if request.method == 'OPTIONS':
+        return Response(status=204, headers=headers)
+    
+    request_json = request.get_json(silent=True)
+    if not request_json:
+        logger.error("/upload: Invalid request body or empty JSON.")
+        return jsonify({"status": "error", "message": "Corpo da requisição inválido ou JSON vazio."}), 400, headers
+    
+    user_id = request_json.get('user_id')
+    image_data = request_json.get('image_data')
+    upload_type = request_json.get('upload_type', 'chat_image')  # 'avatar' ou 'chat_image'
+    filename = request_json.get('filename')
+    
+    if not user_id or not image_data:
+        logger.error(f"/upload: Missing user_id or image_data. user_id={user_id}, image_data_present={bool(image_data)}")
+        return jsonify({"status": "error", "message": "Campos 'user_id' e 'image_data' são obrigatórios."}), 400, headers
+    
+    try:
+        # Upload baseado no tipo
+        if upload_type == 'avatar':
+            image_url = await upload_avatar_to_gcs(user_id, image_data, filename)
+            
+            # Atualizar perfil do usuário com novo avatar
+            if image_url:
+                try:
+                    await set_firestore_document(
+                        'profiles', 
+                        user_id, 
+                        {"user_profile": {"avatar_url": image_url}}, 
+                        merge=True
+                    )
+                    logger.info(f"/upload: Avatar URL updated in user profile for user '{user_id}'.")
+                except Exception as e:
+                    logger.error(f"/upload: Failed to update avatar_url in user profile for user '{user_id}': {e}", exc_info=True)
+                    # Não retorna erro, pois o upload foi bem-sucedido
+        else:
+            image_url = await upload_image_to_gcs(user_id, image_data, filename)
+        
+        if image_url:
+            logger.info(f"/upload: Image uploaded successfully for user '{user_id}'. Type: {upload_type}")
+            return jsonify({
+                "status": "success",
+                "image_url": image_url,
+                "message": "Upload realizado com sucesso.",
+                "upload_type": upload_type
+            }), 200, headers
+        else:
+            logger.error(f"/upload: Image upload failed for user '{user_id}'. No URL returned.")
+            return jsonify({
+                "status": "error",
+                "message": "Falha ao fazer upload da imagem. Tente novamente."
+            }), 500, headers
+    
+    except Exception as e:
+        logger.critical(f"/upload: Unexpected error during image upload for user '{user_id}': {e}", exc_info=True)
+        return jsonify({
+            "status": "error",
+            "message": "Erro interno inesperado ao processar upload."
+        }), 500, headers
 
 @functions_framework.http
 def eixa_entry(request):

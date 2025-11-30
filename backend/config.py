@@ -14,6 +14,7 @@ TOP_LEVEL_COLLECTIONS_MAP = {
     # --- NOVAS COLEÇÕES PARA GERENCIAMENTO DE TEMPO E INTEGRAÇÃO ---
     'routines': 'eixa_routines', # Coleção para templates de rotinas por usuário
     'google_auth': 'eixa_google_auth', # Coleção para tokens de autenticação do Google Calendar por usuário
+    'mood_logs': 'eixa_mood_logs', # Coleção para registros de humor do usuário
     # ----------------------------------------------------------------
 }
 

@@ -21,7 +21,10 @@ from config import EIXA_GOOGLE_AUTH_COLLECTION
 logging.basicConfig(level=logging.INFO)
 CALENDAR_UTILS_LOGGER = logging.getLogger("CALENDAR_UTILS")
 
-GOOGLE_CALENDAR_SCOPES = ['https://www.googleapis.com/auth/calendar']
+GOOGLE_CALENDAR_SCOPES = [
+    'https://www.googleapis.com/auth/calendar',
+    'https://www.googleapis.com/auth/userinfo.email'
+]
 
 class GoogleCalendarUtils:
     def __init__(self):
@@ -42,20 +45,61 @@ class GoogleCalendarUtils:
     async def _get_credentials_doc_ref(self, user_id: str):
         return self.db.collection(EIXA_GOOGLE_AUTH_COLLECTION).document(user_id)
 
-    async def _get_stored_credentials(self, user_id: str) -> dict | None:
-        CALENDAR_UTILS_LOGGER.info(f"Buscando credenciais do Google para user_id: {user_id}")
+    async def _get_accounts_collection(self, user_id: str):
         doc_ref = await self._get_credentials_doc_ref(user_id)
-        doc = await asyncio.to_thread(doc_ref.get)
+        return doc_ref.collection('accounts')
+
+    async def list_accounts(self, user_id: str) -> dict:
+        """Lista contas vinculadas ao usuário (multi-conta)."""
+        accounts_col = await self._get_accounts_collection(user_id)
+        docs = await asyncio.to_thread(lambda: list(accounts_col.stream()))
+        accounts = []
+        for d in docs:
+            data = d.to_dict()
+            data['account_id'] = d.id
+            accounts.append(data)
+        root_doc = await asyncio.to_thread((await self._get_credentials_doc_ref(user_id)).get)
+        active_id = None
+        if root_doc.exists:
+            active_id = root_doc.to_dict().get('active_account_id')
+        return {"active_account_id": active_id, "accounts": accounts}
+
+    async def select_active_account(self, user_id: str, account_id: str) -> dict:
+        accounts_col = await self._get_accounts_collection(user_id)
+        target_doc = await asyncio.to_thread(accounts_col.document(account_id).get)
+        if not target_doc.exists:
+            return {"status": "error", "message": "Conta não encontrada."}
+        root_doc_ref = await self._get_credentials_doc_ref(user_id)
+        await asyncio.to_thread(root_doc_ref.set, {"active_account_id": account_id}, merge=True)
+        return {"status": "success", "message": "Conta ativa atualizada.", "active_account_id": account_id}
+
+    async def _get_stored_credentials(self, user_id: str, account_id: str | None = None) -> dict | None:
+        CALENDAR_UTILS_LOGGER.info(f"Buscando credenciais do Google para user_id: {user_id} (account_id={account_id})")
+        if account_id:
+            accounts_col = await self._get_accounts_collection(user_id)
+            doc = await asyncio.to_thread(accounts_col.document(account_id).get)
+        else:
+            doc_ref = await self._get_credentials_doc_ref(user_id)
+            doc = await asyncio.to_thread(doc_ref.get)
         if doc.exists:
             CALENDAR_UTILS_LOGGER.info(f"Credenciais encontradas para user_id: {user_id}")
             return doc.to_dict()
         CALENDAR_UTILS_LOGGER.warning(f"Nenhuma credencial encontrada para user_id: {user_id}")
         return None
 
-    async def _save_credentials(self, user_id: str, credentials_data: dict):
-        CALENDAR_UTILS_LOGGER.info(f"Salvando/Atualizando credenciais do Google para user_id: {user_id}")
-        doc_ref = await self._get_credentials_doc_ref(user_id)
-        await asyncio.to_thread(doc_ref.set, credentials_data)
+    async def _save_credentials(self, user_id: str, credentials_data: dict, account_id: str | None = None, label: str | None = None, email: str | None = None):
+        CALENDAR_UTILS_LOGGER.info(f"Salvando/Atualizando credenciais do Google para user_id: {user_id} (account_id={account_id})")
+        if account_id:
+            accounts_col = await self._get_accounts_collection(user_id)
+            data_to_store = credentials_data | {"label": label, "email": email}
+            await asyncio.to_thread(accounts_col.document(account_id).set, data_to_store)
+            root_doc_ref = await self._get_credentials_doc_ref(user_id)
+            existing_root = await asyncio.to_thread(root_doc_ref.get)
+            if not existing_root.exists or not existing_root.to_dict().get('active_account_id'):
+                await asyncio.to_thread(root_doc_ref.set, {"active_account_id": account_id}, merge=True)
+        else:
+            doc_ref = await self._get_credentials_doc_ref(user_id)
+            await asyncio.to_thread(doc_ref.set, credentials_data)
         CALENDAR_UTILS_LOGGER.info(f"Credenciais salvas com sucesso para user_id: {user_id}")
     
     async def delete_credentials(self, user_id: str) -> dict:
@@ -70,13 +114,19 @@ class GoogleCalendarUtils:
             return {"status": "error", "message": f"Falha ao deletar credenciais: {str(e)}"}
 
 
-    async def get_credentials(self, user_id: str) -> Credentials | None:
+    async def get_credentials(self, user_id: str, account_id: str | None = None) -> Credentials | None:
         if not self.oauth_config_ready:
             CALENDAR_UTILS_LOGGER.error("Configurações de OAuth não prontas. Não é possível obter credenciais.")
             return None
 
-        CALENDAR_UTILS_LOGGER.info(f"Obtendo e refrescando credenciais para user_id: {user_id}")
-        stored_data = await self._get_stored_credentials(user_id)
+        # Buscar conta ativa se não fornecida
+        if not account_id:
+            root_doc = await asyncio.to_thread((await self._get_credentials_doc_ref(user_id)).get)
+            if root_doc.exists:
+                account_id = root_doc.to_dict().get('active_account_id')
+
+        CALENDAR_UTILS_LOGGER.info(f"Obtendo e refrescando credenciais para user_id: {user_id} (account_id={account_id})")
+        stored_data = await self._get_stored_credentials(user_id, account_id)
         if not stored_data:
             CALENDAR_UTILS_LOGGER.warning(f"Não foi possível obter credenciais para {user_id}.")
             return None
@@ -111,7 +161,7 @@ class GoogleCalendarUtils:
         CALENDAR_UTILS_LOGGER.info(f"Credenciais válidas obtidas para {user_id}.")
         return creds
 
-    async def get_auth_url(self, user_id: str) -> str | None:
+    async def get_auth_url(self, user_id: str, account_label: str | None = None) -> str | None:
         if not self.oauth_config_ready:
             CALENDAR_UTILS_LOGGER.error("Configurações de OAuth não prontas. Não é possível gerar URL de autorização.")
             return None
@@ -141,7 +191,7 @@ class GoogleCalendarUtils:
             redirect_uri=self.redirect_uri
         )
 
-        unique_state = f"{user_id}-{str(uuid.uuid4())}"
+        unique_state = f"{user_id}|{str(uuid.uuid4())}"
 
         authorization_url, state_from_flow = await asyncio.to_thread(
             flow.authorization_url,
@@ -152,10 +202,12 @@ class GoogleCalendarUtils:
         
         try:
             doc_ref = await self._get_credentials_doc_ref(user_id)
-            # Firestore.DELETE_FIELD needs to be imported or set from firestore module
-            from google.cloud import firestore # Temporarily import here if not global
-            await asyncio.to_thread(doc_ref.set, {"oauth_state": unique_state}, merge=True)
-            CALENDAR_UTILS_LOGGER.info(f"OAuth state '{unique_state}' stored for user '{user_id}'.")
+            from google.cloud import firestore
+            payload = {"oauth_state": unique_state}
+            if account_label:
+                payload["pending_account_label"] = account_label
+            await asyncio.to_thread(doc_ref.set, payload, merge=True)
+            CALENDAR_UTILS_LOGGER.info(f"OAuth state '{unique_state}' stored para '{user_id}', label={account_label}.")
         except Exception as e:
             CALENDAR_UTILS_LOGGER.error(f"Falha ao salvar OAuth state para user '{user_id}': {e}", exc_info=True)
             return None
@@ -199,7 +251,7 @@ class GoogleCalendarUtils:
             return {"status": "error", "message": "Parâmetro de segurança ausente. Tente novamente.", "user_id": None}
         
         try:
-            user_id = state.split('-')[0]
+            user_id = state.split('|')[0]
             if not user_id: raise ValueError("User ID not found in state.")
         except Exception as e:
             CALENDAR_UTILS_LOGGER.error(f"Não foi possível extrair user_id do state '{state}': {e}", exc_info=True)
@@ -249,10 +301,26 @@ class GoogleCalendarUtils:
             await asyncio.to_thread(flow.fetch_token, authorization_response=authorization_response_url)
 
             creds = flow.credentials
-            await self._save_credentials(user_id, json.loads(creds.to_json()))
+            email = None
+            try:
+                oauth2_service = await asyncio.to_thread(build, 'oauth2', 'v2', credentials=creds)
+                userinfo = await asyncio.to_thread(lambda: oauth2_service.userinfo().get().execute())
+                email = userinfo.get('email')
+            except Exception as e:
+                CALENDAR_UTILS_LOGGER.warning(f"Não foi possível obter email do usuário: {e}")
+            account_id = email or f"acct_{uuid.uuid4()}"
+            stored_doc_data = await self._get_stored_credentials(user_id)
+            label = stored_doc_data.get('pending_account_label') if stored_doc_data else None
+            await self._save_credentials(user_id, json.loads(creds.to_json()), account_id=account_id, label=label, email=email)
+            try:
+                from google.cloud import firestore
+                doc_ref = await self._get_credentials_doc_ref(user_id)
+                await asyncio.to_thread(doc_ref.update, {"pending_account_label": firestore.DELETE_FIELD})
+            except Exception:
+                pass
 
-            CALENDAR_UTILS_LOGGER.info(f"Credenciais OAuth para user_id: {user_id} salvas com sucesso no Firestore.")
-            return {"status": "success", "message": "Conectado ao Google Calendar com sucesso!", "user_id": user_id}
+            CALENDAR_UTILS_LOGGER.info(f"Credenciais OAuth multi-conta salvas para user_id: {user_id}, account_id={account_id}.")
+            return {"status": "success", "message": "Conectado ao Google Calendar com sucesso!", "user_id": user_id, "account_id": account_id}
         except Exception as e:
             CALENDAR_UTILS_LOGGER.error(f"Erro ao processar callback OAuth para user_id: {user_id}: {e}", exc_info=True)
             return {"status": "error", "message": f"Falha na autenticação com o Google: {str(e)}", "user_id": user_id}

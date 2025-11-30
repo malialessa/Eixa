@@ -108,4 +108,69 @@ async def get_sabotage_patterns(user_id: str, n: int = 20, user_profile: Dict[st
         logger.info(f"Padrões de sabotagem detectados para o usuário '{user_id}': {detected}")
 
     return detected
+
+async def save_mood_log(user_id: str, mood_score: int, note: str = "") -> None:
+    """
+    Salva um registro de humor no Firestore.
+    
+    Args:
+        user_id: ID do usuário
+        mood_score: Pontuação do humor (1-10)
+        note: Nota opcional sobre o humor
+    """
+    if not (1 <= mood_score <= 10):
+        logger.warning(f"Mood score inválido ({mood_score}) para usuário '{user_id}'. Deve estar entre 1-10.")
+        return
+
+    client_timestamp = datetime.now(timezone.utc)
+    doc_id = f"{user_id}_{client_timestamp.isoformat().replace(':', '-').replace('.', '_')}"
+
+    mood_data = {
+        "user_id": user_id,
+        "timestamp": firestore.SERVER_TIMESTAMP,
+        "mood_score": mood_score,
+        "note": note,
+        "created_at": client_timestamp.isoformat()
+    }
+
+    try:
+        mood_logs_collection = get_top_level_collection('mood_logs')
+        db = _initialize_firestore_client_instance()
+        await asyncio.to_thread(db.collection(mood_logs_collection.id).document(doc_id).set, mood_data)
+        logger.info(f"Mood log salvo para usuário '{user_id}'. Score: {mood_score}, Doc ID: {doc_id}")
+    except Exception as e:
+        logger.error(f"Erro ao salvar mood log para usuário '{user_id}': {e}", exc_info=True)
+
+async def get_mood_logs(user_id: str, n: int = 7) -> list[dict]:
+    """
+    Recupera os últimos N registros de humor do usuário.
+    
+    Args:
+        user_id: ID do usuário
+        n: Número de registros a retornar
+    
+    Returns:
+        Lista de dicionários com dados de mood logs
+    """
+    db = _initialize_firestore_client_instance()
+    mood_logs = []
+
+    try:
+        mood_logs_ref = get_top_level_collection('mood_logs')
+        query = mood_logs_ref.where("user_id", "==", user_id) \
+            .order_by("timestamp", direction=firestore.Query.DESCENDING) \
+            .limit(n)
+
+        docs = await asyncio.to_thread(lambda: list(query.stream()))
+
+        for doc in docs:
+            mood_log = doc.to_dict()
+            mood_log['id'] = doc.id
+            mood_logs.append(mood_log)
+
+        logger.info(f"Recuperados {len(mood_logs)} mood logs para usuário '{user_id}'.")
+        return mood_logs
+    except Exception as e:
+        logger.error(f"Erro ao recuperar mood logs para usuário '{user_id}': {e}", exc_info=True)
+        return []
 # --- END OF FILE memory_utils.py ---
