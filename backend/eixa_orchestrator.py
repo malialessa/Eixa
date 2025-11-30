@@ -44,7 +44,7 @@ from google.cloud import firestore
 
 from nudger import analyze_for_nudges
 from user_behavior import track_repetition
-from personal_checkpoint import get_latest_self_eval
+from personal_checkpoint import get_latest_self_eval, run_weekly_checkpoint
 from translation_utils import detect_language, translate_text
 
 from config import DEFAULT_MAX_OUTPUT_TOKENS, DEFAULT_TEMPERATURE, DEFAULT_TIMEZONE, USERS_COLLECTION, TOP_LEVEL_COLLECTIONS_MAP, GEMINI_VISION_MODEL, GEMINI_TEXT_MODEL, EMBEDDING_MODEL_NAME
@@ -705,6 +705,62 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
         await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
         return {"response_payload": response_payload}
 
+    # 7.2.5 🩺 DETECÇÃO DE SOLICITAÇÃO DE DIAGNÓSTICO
+    # Detecta se usuário pediu diagnóstico comportamental/checkpoint
+    diagnostico_keywords = ["diagnóstico", "diagnostico", "checkpoint", "me avalie", "análise comportamental", "como estou indo"]
+    if any(keyword in user_message_for_processing.lower() for keyword in diagnostico_keywords):
+        logger.info(f"ORCHESTRATOR | Diagnóstico solicitado por user '{user_id}'. Executando weekly checkpoint.")
+        try:
+            await run_weekly_checkpoint(user_id)
+            diagnostic_data = await get_latest_self_eval(user_id)
+            
+            if diagnostic_data and diagnostic_data.get('checkpoints'):
+                latest_checkpoint = diagnostic_data['checkpoints'][-1]
+                achievements = latest_checkpoint.get('achievements', [])
+                alerts = latest_checkpoint.get('alerts', [])
+                negative_patterns = latest_checkpoint.get('negative_patterns', [])
+                
+                diagnostico_response = "🩺 **Diagnóstico Atualizado:**\n\n"
+                
+                if achievements:
+                    diagnostico_response += "✅ **Conquistas:**\n"
+                    for ach in achievements:
+                        diagnostico_response += f"- {ach}\n"
+                    diagnostico_response += "\n"
+                
+                if alerts:
+                    diagnostico_response += "⚠️ **Alertas:**\n"
+                    for alert in alerts:
+                        diagnostico_response += f"- {alert}\n"
+                    diagnostico_response += "\n"
+                
+                if negative_patterns:
+                    diagnostico_response += "🔍 **Padrões Observados:**\n"
+                    for pattern in negative_patterns:
+                        diagnostico_response += f"- {pattern}\n"
+                    diagnostico_response += "\n"
+                
+                diagnostico_response += "\nAcesse a aba 'Diagnóstico' para ver os detalhes completos."
+                
+                response_payload["response"] = diagnostico_response
+                response_payload["status"] = "success"
+                response_payload["html_view_data"]["diagnostico"] = diagnostic_data
+            else:
+                response_payload["response"] = "Diagnóstico gerado! Não há dados suficientes ainda para uma análise detalhada. Continue interagindo comigo e vamos construir seu perfil comportamental."
+                response_payload["status"] = "success"
+            
+            if mode_debug_on: response_payload["debug_info"].setdefault("orchestrator_debug_log", []).extend(debug_info_logs)
+            await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
+            return {"response_payload": response_payload}
+        
+        except Exception as e:
+            logger.error(f"ORCHESTRATOR | Failed to generate diagnosis for user '{user_id}': {e}", exc_info=True)
+            response_payload["response"] = "Desculpe, não consegui gerar seu diagnóstico no momento. Tente novamente em alguns instantes."
+            response_payload["status"] = "error"
+            if mode_debug_on: response_payload["debug_info"].setdefault("orchestrator_debug_log", []).extend(debug_info_logs)
+            await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
+            return {"response_payload": response_payload}
+
     # 7.3. Extração de Intenções CRUD/Rotina pela LLM
     logger.debug(f"ORCHESTRATOR | Calling _extract_llm_action_intent.")
     action_intent_data = await _extract_llm_action_intent(
@@ -1311,6 +1367,36 @@ Você pode enriquecer suas respostas com componentes visuais interativos usando 
 
     await save_interaction(user_id, user_input_for_saving, response_payload["response"], source_language, firestore_collection_interactions)
     logger.info(f"ORCHESTRATOR | Interaction saved for user '{user_id}'. Final response status: {response_payload['status']}.")
+
+    # 🧠 DETECÇÃO DE EMOTIONAL MEMORIES
+    # Detecta conteúdo emocional na mensagem do usuário e salva como emotional memory
+    if user_message_for_processing:
+        emotional_keywords_map = {
+            "ansiedade": ["ansioso", "ansiosa", "preocupado", "preocupada", "nervoso", "nervosa", "estressado", "estressada"],
+            "frustração": ["frustrado", "frustrada", "irritado", "irritada", "chateado", "chateada", "raiva"],
+            "alegria": ["feliz", "animado", "animada", "empolgado", "empolgada", "contente", "alegre"],
+            "esperança": ["esperançoso", "esperançosa", "otimista", "motivado", "motivada", "confiante"],
+            "exaustão": ["cansado", "cansada", "exausto", "exausta", "esgotado", "esgotada", "sem energia"],
+            "tristeza": ["triste", "deprimido", "deprimida", "desanimado", "desanimada", "melancólico"],
+            "procrastinação": ["deixar para depois", "amanhã eu faço", "procrastinar", "adiando"],
+            "dúvida": ["não sei", "confuso", "confusa", "perdido", "perdida", "bloqueado", "bloqueada"]
+        }
+        
+        detected_emotions = []
+        message_lower = user_message_for_processing.lower()
+        
+        for emotion_tag, keywords in emotional_keywords_map.items():
+            if any(keyword in message_lower for keyword in keywords):
+                detected_emotions.append(emotion_tag)
+        
+        # Se detectou emoções, salva emotional memory
+        if detected_emotions:
+            from memory_utils import add_emotional_memory
+            try:
+                await add_emotional_memory(user_id, user_message_for_processing, detected_emotions)
+                logger.info(f"ORCHESTRATOR | Emotional memory saved for user '{user_id}' with tags: {detected_emotions}")
+            except Exception as e:
+                logger.error(f"ORCHESTRATOR | Failed to save emotional memory for user '{user_id}': {e}", exc_info=True)
 
     if profile_update_json:
         await update_profile_from_inferred_data(user_id, profile_update_json, user_profile_template_content)

@@ -1508,7 +1508,16 @@
                     <div class="chat-messages" id="chat-display">
                         <div class="message message-ai">
                             <strong>EIXA</strong><br>
-                            Olá! Como posso ajudar a organizar seu fluxo hoje?
+                            👋 Olá! Sou EIXA, seu assistente de produtividade inteligente.<br><br>
+                            
+                            <strong>🎯 Você pode me pedir para:</strong><br>
+                            • <em>"Criar uma tarefa para amanhã às 10h"</em><br>
+                            • <em>"Mostrar meus projetos"</em><br>
+                            • <em>"Me dê um diagnóstico"</em><br>
+                            • <em>"Aplicar minha rotina matinal"</em><br>
+                            • <em>"Como está meu humor esta semana?"</em><br><br>
+                            
+                            <strong>💡 Dica:</strong> Converse naturalmente comigo! Estou aqui para ajudar a organizar seu dia e entender como você está se sentindo.
                         </div>
                     </div>
 
@@ -2537,7 +2546,19 @@
         function renderDiagnosis(data) {
             const container = document.getElementById('diagnostico-content');
             if (!data) {
-                container.innerHTML = '<div class="card"><p style="color:var(--text-secondary);">Nenhum diagnóstico recente encontrado.</p></div>';
+                container.innerHTML = `
+                    <div style="text-align:center; padding:40px; color:var(--text-secondary);">
+                        <span class="material-icons-round" style="font-size:64px; opacity:0.3; margin-bottom:16px; display:block;">health_and_safety</span>
+                        <p style="font-size:16px; font-weight:600; margin-bottom:8px;">Nenhum diagnóstico recente encontrado</p>
+                        <p style="font-size:14px; opacity:0.8; margin-bottom:24px;">Solicite uma análise comportamental!</p>
+                        <div style="background:var(--bg-card); padding:16px; border-radius:12px; border-left:4px solid var(--accent-primary); max-width:500px; margin:0 auto; text-align:left;">
+                            <p style="font-size:13px; margin-bottom:8px;"><strong>💬 Peça no chat:</strong></p>
+                            <code style="background:var(--bg-input); padding:4px 8px; border-radius:6px; display:block; margin-bottom:4px;">"Me dê um diagnóstico"</code>
+                            <code style="background:var(--bg-input); padding:4px 8px; border-radius:6px; display:block;">"Faça minha avaliação"</code>
+                            <p style="font-size:12px; margin-top:12px; opacity:0.7;">🩺 EIXA analisa suas interações e gera insights sobre seus padrões de comportamento, conquistas e alertas.</p>
+                        </div>
+                    </div>
+                `;
                 return;
             }
             
@@ -2706,7 +2727,18 @@
             const container = document.getElementById('projects-container');
             container.innerHTML = '';
             if (!projects || projects.length === 0) {
-                container.innerHTML = '<p style="color:var(--text-secondary);">Nenhum projeto encontrado.</p>';
+                container.innerHTML = `
+                    <div style="text-align:center; padding:40px; color:var(--text-secondary);">
+                        <span class="material-icons-round" style="font-size:64px; opacity:0.3; margin-bottom:16px; display:block;">folder_off</span>
+                        <p style="font-size:16px; font-weight:600; margin-bottom:8px;">Nenhum projeto encontrado</p>
+                        <p style="font-size:14px; opacity:0.8; margin-bottom:24px;">Comece criando seu primeiro projeto!</p>
+                        <div style="background:var(--bg-card); padding:16px; border-radius:12px; border-left:4px solid var(--accent-primary); max-width:500px; margin:0 auto; text-align:left;">
+                            <p style="font-size:13px; margin-bottom:8px;"><strong>💬 Diga no chat:</strong></p>
+                            <code style="background:var(--bg-input); padding:4px 8px; border-radius:6px; display:block; margin-bottom:4px;">"Criar projeto: Eixa 2.0"</code>
+                            <code style="background:var(--bg-input); padding:4px 8px; border-radius:6px; display:block;">"Novo projeto chamado Lançamento de Produto"</code>
+                        </div>
+                    </div>
+                `;
                 return;
             }
             
@@ -2780,7 +2812,19 @@
             const container = document.getElementById('memories-container');
             container.innerHTML = '';
             if (!memories || memories.length === 0) {
-                container.innerHTML = '<p style="color:var(--text-secondary);">Nenhuma memória registrada.</p>';
+                container.innerHTML = `
+                    <div style="text-align:center; padding:40px; color:var(--text-secondary);">
+                        <span class="material-icons-round" style="font-size:64px; opacity:0.3; margin-bottom:16px; display:block;">favorite_border</span>
+                        <p style="font-size:16px; font-weight:600; margin-bottom:8px;">Nenhuma memória emocional registrada</p>
+                        <p style="font-size:14px; opacity:0.8; margin-bottom:24px;">Compartilhe como você está se sentindo!</p>
+                        <div style="background:var(--bg-card); padding:16px; border-radius:12px; border-left:4px solid var(--accent-primary); max-width:500px; margin:0 auto; text-align:left;">
+                            <p style="font-size:13px; margin-bottom:8px;"><strong>💬 Experimente dizer:</strong></p>
+                            <code style="background:var(--bg-input); padding:4px 8px; border-radius:6px; display:block; margin-bottom:4px;">"Estou me sentindo ansioso sobre a reunião"</code>
+                            <code style="background:var(--bg-input); padding:4px 8px; border-radius:6px; display:block;">"Hoje estou muito feliz!"</code>
+                            <p style="font-size:12px; margin-top:12px; opacity:0.7;">🧠 EIXA detecta automaticamente suas emoções e cria memórias para acompanhar seu bem-estar.</p>
+                        </div>
+                    </div>
+                `;
                 return;
             }
             
