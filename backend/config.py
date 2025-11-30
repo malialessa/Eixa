@@ -23,7 +23,8 @@ SUBCOLLECTIONS_MAP = {
     'agenda': 'agenda', 
     'projects': 'projects',
     'checkpoints': 'self_checkpoints',
-    'vector_memory': 'vector_memory'
+    'vector_memory': 'vector_memory',
+    'unscheduled': 'unscheduled_tasks'
 }
 
 USERS_COLLECTION = TOP_LEVEL_COLLECTIONS_MAP['eixa_user_data']

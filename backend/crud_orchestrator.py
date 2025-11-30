@@ -11,23 +11,31 @@ from typing import Dict, Any
 from eixa_data import (
     get_daily_tasks_data, save_daily_tasks_data, get_project_data, save_project_data, 
     get_all_daily_tasks, get_all_projects,
-    save_routine_template, apply_routine_to_day, delete_routine_template, get_all_routines
+    save_routine_template, apply_routine_to_day, delete_routine_template, get_all_routines,
+    get_all_unscheduled_tasks, save_unscheduled_task, delete_unscheduled_task,
+    get_unscheduled_task
 )
 from collections_manager import get_task_doc_ref, get_project_doc_ref
 # NÃO DEVE HAVER IMPORTAÇÃO DE crud_orchestrator AQUI (para evitar ciclo).
 
 logger = logging.getLogger(__name__)
 
+async def _build_agenda_html_payload(user_id: str) -> Dict[str, Any]:
+    """Constrói payload HTML com agenda (by_date) e tarefas não agendadas."""
+    agenda_by_date = await get_all_daily_tasks(user_id)
+    unscheduled = await get_all_unscheduled_tasks(user_id)
+    return {"agenda": {"by_date": agenda_by_date, "unscheduled": unscheduled}}
+
 # --- Funções CRUD Internas para Tarefas (Task) ---
 
 # MODIFICADO: Adicionados time_str e duration_minutes
-async def _create_task_data(user_id: str, date_str: str, description: str, time_str: str = "00:00", duration_minutes: int = 0) -> Dict[str, Any]:
+async def _create_task_data(user_id: str, date_str: str, description: str, time_str: str = "00:00", duration_minutes: int = 0, *, task_id: str | None = None, project_id: str | None = None) -> Dict[str, Any]:
     logger.debug(f"CRUD | Task | _create_task_data: Entered for user '{user_id}', date '{date_str}', desc '{description}', time '{time_str}', duration '{duration_minutes}'") # Novo log
     if not description:
         logger.warning(f"CRUD | Task | Create failed: Description is mandatory for user '{user_id}'.")
         return {"status": "error", "message": "A descrição é obrigatória para criar uma tarefa.", "data": {}}
 
-    task_id = str(uuid.uuid4())
+    task_id = task_id or str(uuid.uuid4())
     # MODIFICADO: Incluindo time, duration_minutes E created_at
     new_task = {
         "id": task_id,
@@ -40,7 +48,8 @@ async def _create_task_data(user_id: str, date_str: str, description: str, time_
         "routine_item_id": None,
         "google_calendar_event_id": None,
         "is_synced_with_google_calendar": False,
-        "created_at": datetime.now(timezone.utc).isoformat() # NOVO: Timestamp de criação
+        "created_at": datetime.now(timezone.utc).isoformat(), # NOVO: Timestamp de criação
+        "project_id": project_id
     }
 
     logger.debug(f"CRUD | Task | _create_task_data: Calling get_daily_tasks_data for '{date_str}'.")
@@ -62,11 +71,45 @@ async def _create_task_data(user_id: str, date_str: str, description: str, time_
         logger.debug(f"CRUD | Task | _create_task_data: Calling save_daily_tasks_data for '{date_str}'.")
         await save_daily_tasks_data(user_id, date_str, daily_data)
         logger.info(f"CRUD | Task | Task '{description}' created with ID '{task_id}' on '{date_str}' at '{time_str}' for user '{user_id}'. Data saved successfully to Firestore.")
-        agenda_data = await get_all_daily_tasks(user_id)
-        return {"status": "success", "message": f"Tarefa '{description}' adicionada para {date_str} às {time_str}.", "data": {"task_id": task_id}, "html_view_data": {"agenda": agenda_data}}
+        html_view_data = await _build_agenda_html_payload(user_id)
+        return {"status": "success", "message": f"Tarefa '{description}' adicionada para {date_str} às {time_str}.", "data": {"task_id": task_id}, "html_view_data": html_view_data}
     except Exception as e:
         logger.critical(f"CRUD | Task | CRITICAL ERROR: Failed to write task to Firestore for user '{user_id}' on '{date_str}'. Payload: {daily_data}. Error: {e}", exc_info=True)
         return {"status": "error", "message": "Falha ao salvar a tarefa no banco de dados.", "data": {}, "debug": str(e)}
+
+async def _create_unscheduled_task_data(user_id: str, description: str, time_str: str | None, duration_minutes: int | None, project_id: str | None = None) -> Dict[str, Any]:
+    """Cria uma tarefa sem data (inbox/pendente)."""
+    if not description:
+        logger.error(f"CRUD | Task | Unscheduled create failed: Description missing for user '{user_id}'.")
+        return {"status": "error", "message": "A descrição é obrigatória.", "data": {}}
+
+    task_id = str(uuid.uuid4())
+    now_iso = datetime.now(timezone.utc).isoformat()
+    task_payload = {
+        "id": task_id,
+        "description": description.strip(),
+        "time": time_str,
+        "duration_minutes": duration_minutes if isinstance(duration_minutes, int) else None,
+        "status": "todo",
+        "completed": False,
+        "origin": "unscheduled",
+        "project_id": project_id,
+        "created_at": now_iso,
+        "updated_at": now_iso
+    }
+
+    try:
+        await save_unscheduled_task(user_id, task_id, task_payload)
+        html_view_data = await _build_agenda_html_payload(user_id)
+        return {
+            "status": "success",
+            "message": f"Tarefa '{description}' adicionada às pendentes de agendamento.",
+            "data": {"task_id": task_id, "scheduled": False},
+            "html_view_data": html_view_data
+        }
+    except Exception as e:
+        logger.critical(f"CRUD | Task | Failed to save unscheduled task for user '{user_id}': {e}", exc_info=True)
+        return {"status": "error", "message": "Falha ao salvar a tarefa sem data.", "data": {}, "debug": str(e)}
 
 # MODIFICADO: Adicionados new_time e new_duration
 async def _update_task_status_or_data(user_id: str, date_str: str, task_id: str, new_completed_status: bool = None, new_description: str = None, new_time: str = None, new_duration_minutes: int = None, new_status: str = None) -> Dict[str, Any]:
@@ -113,14 +156,66 @@ async def _update_task_status_or_data(user_id: str, date_str: str, task_id: str,
             logger.debug(f"CRUD | Task | _update_task_status_or_data: Calling save_daily_tasks_data for '{date_str}'.")
             await save_daily_tasks_data(user_id, date_str, daily_data)
             logger.info(f"CRUD | Task | Task ID '{task_id}' on '{date_str}' updated for user '{user_id}'. Data updated successfully to Firestore.")
-            agenda_data = await get_all_daily_tasks(user_id)
-            return {"status": "success", "message": "Tarefa atualizada com sucesso.", "html_view_data": {"agenda": agenda_data}} 
+            html_view_data = await _build_agenda_html_payload(user_id)
+            return {"status": "success", "message": "Tarefa atualizada com sucesso.", "html_view_data": html_view_data} 
         except Exception as e:
             logger.error(f"CRUD | Task | Failed to update task in Firestore for user '{user_id}': {e}", exc_info=True)
             return {"status": "error", "message": "Não foi possível atualizar a tarefa."}
 
     logger.warning(f"CRUD | Task | Update failed: Task ID '{task_id}' not found on '{date_str}' for user '{user_id}'.")
     return {"status": "error", "message": "Não foi possível encontrar a tarefa para atualização."}
+
+async def _update_or_schedule_unscheduled_task(user_id: str, task_id: str, *, target_date: str | None = None, description: str | None = None, time_str: str | None = None, duration_minutes: int | None = None, completed: bool | None = None, status: str | None = None) -> Dict[str, Any]:
+    """Atualiza ou agenda uma tarefa não agendada."""
+    existing_task = await get_unscheduled_task(user_id, task_id)
+    if not existing_task:
+        logger.warning(f"CRUD | Task | Unscheduled update failed: Task ID '{task_id}' not found for user '{user_id}'.")
+        return {"status": "error", "message": "Tarefa pendente não encontrada."}
+
+    if target_date:
+        # Agendar: move para agenda
+        logger.info(f"CRUD | Task | Scheduling unscheduled task '{task_id}' for user '{user_id}' on '{target_date}'.")
+        scheduled_description = description or existing_task.get('description')
+        scheduled_time = time_str or existing_task.get('time') or "00:00"
+        scheduled_duration = duration_minutes if isinstance(duration_minutes, int) else existing_task.get('duration_minutes') or 0
+        project_id = existing_task.get('project_id')
+
+        schedule_result = await _create_task_data(
+            user_id,
+            target_date,
+            scheduled_description,
+            scheduled_time,
+            scheduled_duration,
+            task_id=task_id,
+            project_id=project_id
+        )
+        if schedule_result.get('status') == 'success':
+            await delete_unscheduled_task(user_id, task_id)
+        return schedule_result
+
+    # Apenas atualiza metadados sem agendar
+    if description is not None:
+        existing_task['description'] = description.strip()
+    if time_str is not None:
+        existing_task['time'] = time_str
+    if duration_minutes is not None:
+        existing_task['duration_minutes'] = duration_minutes
+    if completed is not None:
+        existing_task['completed'] = completed
+        existing_task['status'] = 'done' if completed else existing_task.get('status', 'todo')
+    if status is not None:
+        existing_task['status'] = status
+        existing_task['completed'] = True if status == 'done' else False
+
+    existing_task['updated_at'] = datetime.now(timezone.utc).isoformat()
+
+    try:
+        await save_unscheduled_task(user_id, task_id, existing_task)
+        html_view_data = await _build_agenda_html_payload(user_id)
+        return {"status": "success", "message": "Tarefa pendente atualizada.", "html_view_data": html_view_data}
+    except Exception as e:
+        logger.error(f"CRUD | Task | Failed to update unscheduled task '{task_id}' for user '{user_id}': {e}", exc_info=True)
+        return {"status": "error", "message": "Não foi possível atualizar a tarefa pendente."}
 
 async def _delete_task_by_id(user_id: str, date_str: str, task_id: str) -> Dict[str, Any]:
     logger.debug(f"CRUD | Task | _delete_task_by_id: Entered for user '{user_id}', task_id '{task_id}'.")
@@ -144,14 +239,24 @@ async def _delete_task_by_id(user_id: str, date_str: str, task_id: str) -> Dict[
                 logger.debug(f"CRUD | Task | _delete_task_by_id: Calling save_daily_tasks_data for '{date_str}'.")
                 await save_daily_tasks_data(user_id, date_str, daily_data)
                 logger.info(f"CRUD | Task | Task ID '{task_id}' on '{date_str}' deleted for user '{user_id}'. Agenda updated.")
-            agenda_data = await get_all_daily_tasks(user_id)
-            return {"status": "success", "message": "Tarefa excluída com sucesso.", "html_view_data": {"agenda": agenda_data}} 
+            html_view_data = await _build_agenda_html_payload(user_id)
+            return {"status": "success", "message": "Tarefa excluída com sucesso.", "html_view_data": html_view_data} 
         except Exception as e:
             logger.error(f"CRUD | Task | Failed to delete/update agenda document for user '{user_id}' on '{date_str}': {e}", exc_info=True)
             return {"status": "error", "message": "Não foi possível excluir a tarefa."}
 
     logger.warning(f"CRUD | Task | Delete failed: Task ID '{task_id}' not found for deletion on '{date_str}' for user '{user_id}'.")
     return {"status": "error", "message": "Não foi possível encontrar a tarefa para exclusão."}
+
+async def _delete_unscheduled_task_entry(user_id: str, task_id: str) -> Dict[str, Any]:
+    """Remove uma tarefa da lista de não agendadas."""
+    try:
+        await delete_unscheduled_task(user_id, task_id)
+        html_view_data = await _build_agenda_html_payload(user_id)
+        return {"status": "success", "message": "Tarefa pendente removida.", "html_view_data": html_view_data}
+    except Exception as e:
+        logger.error(f"CRUD | Task | Failed to delete unscheduled task '{task_id}' for user '{user_id}': {e}", exc_info=True)
+        return {"status": "error", "message": "Não foi possível excluir a tarefa pendente."}
 
 async def _bulk_delete_tasks(user_id: str, tasks_payload: Dict[str, Any]) -> Dict[str, Any]:
     """Exclui várias tarefas em lote. Suporta:
@@ -232,12 +337,20 @@ async def _bulk_delete_tasks(user_id: str, tasks_payload: Dict[str, Any]) -> Dic
                     deleted.append({"task_id": t.get('id'), "date": d_str})
                 changed_days.add(d_str)
 
-    agenda_data = await get_all_daily_tasks(user_id)
+        if desc_contains:
+            unscheduled_tasks = await get_all_unscheduled_tasks(user_id)
+            for task in unscheduled_tasks:
+                if desc_contains.lower() in (task.get('description') or '').lower():
+                    await delete_unscheduled_task(user_id, task.get('id'))
+                    deleted.append({"task_id": task.get('id'), "date": None})
+                    changed_days.add("__unscheduled__")
+
+    html_view_data = await _build_agenda_html_payload(user_id)
     return {
         "status": "success" if deleted else "no_changes",
         "message": f"{len(deleted)} tarefas excluídas." if deleted else "Nenhuma tarefa correspondia aos critérios.",
         "data": {"deleted_count": len(deleted), "failed": failed},
-        "html_view_data": {"agenda": agenda_data}
+        "html_view_data": html_view_data
     }
 
 # --- Funções CRUD Internas para Projetos (Project) ---
@@ -434,16 +547,18 @@ async def orchestrate_crud_action(payload: Dict[str, Any]) -> Dict[str, Any]:
             logger.debug(f"CRUD | orchestrate_crud_action: Task action '{action}' detected.") 
             date_str = data.get('date') 
             
-            time_str = data.get('time', "00:00") 
-            duration_minutes = data.get('duration_minutes', 0) 
+            time_str = data.get('time') 
+            duration_minutes = data.get('duration_minutes') 
+            project_id = data.get('project_id')
 
             is_bulk_delete = (action == 'bulk_delete')
 
-            if not is_bulk_delete and not date_str:
+            # Validação condicional: date_str pode ser None para create (tarefa não agendada) ou delete (tenta scheduled e unscheduled)
+            if not is_bulk_delete and action not in ('create', 'delete') and not date_str:
                 logger.error(f"CRUD | Task | Missing date for action '{action}' for user '{user_id}'. Payload data: {data}")
                 return {"status": "error", "message": "A data é obrigatória para operações de tarefa.", "data": {}, "debug_info": debug_info}
 
-            if not is_bulk_delete:
+            if not is_bulk_delete and date_str:
                 try:
                     date.fromisoformat(date_str)
                     # Adicionado validação mais rigorosa para o formato de hora
@@ -464,7 +579,19 @@ async def orchestrate_crud_action(payload: Dict[str, Any]) -> Dict[str, Any]:
                 if not description:
                     logger.error(f"CRUD | Task | Create failed: Description is mandatory for user '{user_id}'. Payload data: {data}")
                     return {"status": "error", "message": "A descrição é obrigatória para criar uma tarefa.", "data": {}, "debug_info": debug_info}
-                return await _create_task_data(user_id, date_str, description, time_str, duration_minutes)
+
+                if not date_str:
+                    # Criar como tarefa não agendada
+                    if time_str is not None and not isinstance(time_str, str):
+                        time_str = None
+                    if duration_minutes is not None and not isinstance(duration_minutes, int):
+                        duration_minutes = None
+                    return await _create_unscheduled_task_data(user_id, description, time_str, duration_minutes, project_id)
+
+                # Criar como tarefa agendada
+                effective_time = time_str or "00:00"
+                effective_duration = duration_minutes if isinstance(duration_minutes, int) else 0
+                return await _create_task_data(user_id, date_str, description, effective_time, effective_duration, project_id=project_id)
 
             elif action == 'update':
                 if not item_id:
@@ -476,18 +603,55 @@ async def orchestrate_crud_action(payload: Dict[str, Any]) -> Dict[str, Any]:
                 new_description = data.get('description')
                 new_time = data.get('time')
                 new_duration_minutes = data.get('duration_minutes')
+                new_status = data.get('status')
 
-                return await _update_task_status_or_data(user_id, date_str, item_id, 
-                                                           new_completed_status, 
-                                                           new_description,
-                                                           new_time,
-                                                           new_duration_minutes)
+                if date_str:
+                    # Tentar atualizar em agenda; se falhar, tentar agendar desde unscheduled
+                    result = await _update_task_status_or_data(user_id, date_str, item_id, 
+                                                               new_completed_status, 
+                                                               new_description,
+                                                               new_time,
+                                                               new_duration_minutes,
+                                                               new_status)
+                    if result.get('status') == 'error':
+                        # Tenta escalonar tarefa pendente para esta data
+                        return await _update_or_schedule_unscheduled_task(
+                            user_id,
+                            item_id,
+                            target_date=date_str,
+                            description=new_description,
+                            time_str=new_time,
+                            duration_minutes=new_duration_minutes,
+                            completed=new_completed_status,
+                            status=new_status
+                        )
+                    return result
+
+                # Sem date: apenas atualizar tarefa não agendada
+                return await _update_or_schedule_unscheduled_task(
+                    user_id,
+                    item_id,
+                    description=new_description,
+                    time_str=new_time,
+                    duration_minutes=new_duration_minutes,
+                    completed=new_completed_status,
+                    status=new_status
+                )
 
             elif action == 'delete':
                 if not item_id:
                     logger.error(f"CRUD | Task | Delete failed: Task ID is mandatory for user '{user_id}'. Payload data: {data}")
                     return {"status": "error", "message": "O ID da tarefa é obrigatório.", "data": {}, "debug_info": debug_info}
-                return await _delete_task_by_id(user_id, date_str, item_id)
+                
+                if date_str:
+                    # Tentar deletar de agenda; se falhar, tentar unscheduled
+                    result = await _delete_task_by_id(user_id, date_str, item_id)
+                    if result.get('status') == 'error':
+                        return await _delete_unscheduled_task_entry(user_id, item_id)
+                    return result
+                else:
+                    # Sem date, assume que é tarefa não agendada
+                    return await _delete_unscheduled_task_entry(user_id, item_id)
             
             elif is_bulk_delete:
                 # bulk delete não exige date_str global; usa datas internas ou filtros

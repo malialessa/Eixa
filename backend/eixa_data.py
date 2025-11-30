@@ -11,7 +11,14 @@ from config import (
     EIXA_ROUTINES_COLLECTION, EIXA_GOOGLE_AUTH_COLLECTION,
     SUBCOLLECTIONS_MAP
 )
-from collections_manager import get_user_subcollection, get_task_doc_ref, get_project_doc_ref, get_top_level_collection
+from collections_manager import (
+    get_user_subcollection,
+    get_task_doc_ref,
+    get_project_doc_ref,
+    get_top_level_collection,
+    get_unscheduled_tasks_collection,
+    get_unscheduled_task_doc_ref,
+)
 from google_calendar_utils import GoogleCalendarUtils
 
 logger = logging.getLogger(__name__)
@@ -43,6 +50,58 @@ def _sort_tasks_by_time(tasks: list) -> list:
         return (0, 0)
 
     return sorted(tasks, key=sort_key)
+
+
+# --- Tarefas não agendadas (Inbox) ---
+
+async def get_all_unscheduled_tasks(user_id: str) -> List[dict]:
+    """Retorna todas as tarefas sem data agendada."""
+    collection_ref = get_unscheduled_tasks_collection(user_id)
+    try:
+        docs = await asyncio.to_thread(lambda: list(collection_ref.stream()))
+        tasks = []
+        for doc in docs:
+            task_data = doc.to_dict() or {}
+            task_data.setdefault("id", doc.id)
+            task_data.setdefault("description", "Tarefa sem descrição")
+            task_data.setdefault("status", "todo")
+            task_data.setdefault("completed", task_data.get("status") == "done")
+            task_data.setdefault("created_at", datetime.now(timezone.utc).isoformat())
+            task_data.setdefault("updated_at", datetime.now(timezone.utc).isoformat())
+            tasks.append(task_data)
+        return tasks
+    except Exception as e:
+        logger.error(f"EIXA_DATA | get_all_unscheduled_tasks: Failed to retrieve unscheduled tasks for '{user_id}': {e}", exc_info=True)
+        return []
+
+async def save_unscheduled_task(user_id: str, task_id: str, data: dict):
+    doc_ref = get_unscheduled_task_doc_ref(user_id, task_id)
+    logger.debug(f"EIXA_DATA | save_unscheduled_task: Saving unscheduled task '{task_id}' for user '{user_id}'. Path: {doc_ref.path}. Data: {data}")
+    try:
+        await asyncio.to_thread(doc_ref.set, data)
+        logger.info(f"EIXA_DATA | save_unscheduled_task: Unscheduled task '{task_id}' saved for user '{user_id}'.")
+    except Exception as e:
+        logger.critical(f"EIXA_DATA | save_unscheduled_task: Failed to persist unscheduled task '{task_id}' for user '{user_id}': {e}", exc_info=True)
+        raise
+
+async def delete_unscheduled_task(user_id: str, task_id: str):
+    doc_ref = get_unscheduled_task_doc_ref(user_id, task_id)
+    logger.debug(f"EIXA_DATA | delete_unscheduled_task: Removing unscheduled task '{task_id}' for user '{user_id}'. Path: {doc_ref.path}")
+    try:
+        await asyncio.to_thread(doc_ref.delete)
+        logger.info(f"EIXA_DATA | delete_unscheduled_task: Unscheduled task '{task_id}' deleted for user '{user_id}'.")
+    except Exception as e:
+        logger.error(f"EIXA_DATA | delete_unscheduled_task: Failed to delete unscheduled task '{task_id}' for user '{user_id}': {e}", exc_info=True)
+        raise
+
+async def get_unscheduled_task(user_id: str, task_id: str) -> dict | None:
+    doc_ref = get_unscheduled_task_doc_ref(user_id, task_id)
+    doc = await asyncio.to_thread(doc_ref.get)
+    if doc.exists:
+        data = doc.to_dict() or {}
+        data.setdefault("id", doc.id)
+        return data
+    return None
 
 
 # --- Funções de Access to Data Agenda (Daily Tasks) ---

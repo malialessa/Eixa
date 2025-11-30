@@ -54,6 +54,16 @@ def get_project_doc_ref(user_id: str, project_id: str) -> firestore.DocumentRefe
     logger.debug(f"COLLECTIONS_MANAGER | Getting project doc ref for user '{user_id}' project '{project_id}'. Full path: {project_doc_ref.path}") # Novo log
     return project_doc_ref
 
+def get_unscheduled_tasks_collection(user_id: str) -> firestore.CollectionReference:
+    collection_ref = get_user_subcollection(user_id, 'unscheduled')
+    logger.debug(f"COLLECTIONS_MANAGER | Getting unscheduled tasks collection for user '{user_id}'. Full path: {collection_ref.parent.path}/{collection_ref.id}")
+    return collection_ref
+
+def get_unscheduled_task_doc_ref(user_id: str, task_id: str) -> firestore.DocumentReference:
+    doc_ref = get_unscheduled_tasks_collection(user_id).document(task_id)
+    logger.debug(f"COLLECTIONS_MANAGER | Getting unscheduled task doc ref for user '{user_id}' task '{task_id}'. Full path: {doc_ref.path}")
+    return doc_ref
+
 def get_vector_memory_doc_ref(user_id: str, memory_id: str) -> firestore.DocumentReference:
     vector_memory_doc_ref = get_user_subcollection(user_id, 'vector_memory').document(memory_id)
     logger.debug(f"COLLECTIONS_MANAGER | Getting vector memory doc ref for user '{user_id}' memory '{memory_id}'. Full path: {vector_memory_doc_ref.path}") # Novo log
