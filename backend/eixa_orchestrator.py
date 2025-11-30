@@ -290,7 +290,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                 agenda_data = await get_all_daily_tasks(user_id)
                 response_payload["html_view_data"]["agenda"] = agenda_data
                 response_payload["response"] = "Aqui estão suas tarefas."
-            elif view_request == "projetos":
+            elif view_request in ["projetos", "projects"]:
                 projects_data = await get_all_projects(user_id)
                 response_payload["html_view_data"]["projetos"] = projects_data
                 response_payload["response"] = "Aqui está a lista dos seus projetos."
@@ -604,7 +604,7 @@ async def orchestrate_eixa_response(user_id: str, user_message: str = None, uplo
                                     item['id'] = str(uuid.uuid4())
                         
                         # Inclui a regra de recorrência, se presente
-                        routine_data['recurrence_rule'] = item_details.get('recurrence_rule', None)
+                        routine_data['recurrence_rule'] = routine_data.get('recurrence_rule', None)
 
                         await save_routine_template(user_id, routine_id_from_payload, routine_data)
                         result = {"status": "success", "message": f"Rotina '{routine_name}' criada com sucesso!"}
