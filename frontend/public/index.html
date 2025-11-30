@@ -1687,14 +1687,15 @@
             </div>
             <div style="display:flex; gap:16px;">
                 <div class="input-group" style="flex:1;">
-                    <label style="display:block; margin-bottom:8px; font-size:14px; color:var(--text-secondary);">Data</label>
+                    <label style="display:block; margin-bottom:8px; font-size:14px; color:var(--text-secondary);">Data <span style="font-size:11px; color:var(--text-tertiary);">(opcional)</span></label>
                     <input type="date" id="taskDate" style="width:100%; padding:12px; border-radius:8px; border:1px solid var(--border-subtle); background:var(--bg-input); color:var(--text-primary);">
                 </div>
                 <div class="input-group" style="flex:1;">
-                    <label style="display:block; margin-bottom:8px; font-size:14px; color:var(--text-secondary);">Hora</label>
+                    <label style="display:block; margin-bottom:8px; font-size:14px; color:var(--text-secondary);">Hora <span style="font-size:11px; color:var(--text-tertiary);">(opcional)</span></label>
                     <input type="time" id="taskTime" style="width:100%; padding:12px; border-radius:8px; border:1px solid var(--border-subtle); background:var(--bg-input); color:var(--text-primary);">
                 </div>
             </div>
+            <p style="font-size:12px; color:var(--text-tertiary); margin:8px 0 0 0;">💡 Deixe data em branco para adicionar à sua caixa de entrada</p>
             <div style="display:flex; justify-content:flex-end; margin-top:24px;">
                 <button class="btn-primary" onclick="submitTask()">Criar Tarefa</button>
             </div>
@@ -1872,8 +1873,8 @@
             const date = document.getElementById('taskDate').value;
             const time = document.getElementById('taskTime').value;
             
-            if(!desc || !date) {
-                showToast('Preencha descrição e data', 'error');
+            if(!desc) {
+                showToast('Preencha a descrição', 'error');
                 return;
             }
 
@@ -1882,13 +1883,18 @@
                 request_type: 'crud_action',
                 item_type: 'task',
                 action: 'create',
-                date: date,
                 data: {
-                    description: desc,
-                    time: time || '09:00',
-                    duration_minutes: 60
+                    description: desc
                 }
             };
+            
+            if(date) {
+                payload.data.date = date;
+                payload.data.time = time || '09:00';
+                payload.data.duration_minutes = 60;
+            } else if(time) {
+                payload.data.time = time;
+            }
 
             const res = await callBackendAPI(payload);
             hideGlobalLoader();
@@ -1947,6 +1953,98 @@
             if(res.status !== 'error') {
                 showToast('Tarefa excluída!', 'success');
                 closeModal('editTaskModal');
+                loadViewData('agenda');
+            } else {
+                showToast('Erro: ' + res.message, 'error');
+            }
+        }
+
+        async function deleteUnscheduledTask(taskId) {
+            if(!confirm('Excluir esta tarefa não agendada?')) return;
+            
+            showGlobalLoader();
+            const payload = {
+                request_type: 'crud_action',
+                item_type: 'task',
+                action: 'delete',
+                item_id: taskId
+            };
+            const res = await callBackendAPI(payload);
+            hideGlobalLoader();
+            if(res.status !== 'error') {
+                showToast('Tarefa removida!', 'success');
+                loadViewData('agenda');
+            } else {
+                showToast('Erro: ' + res.message, 'error');
+            }
+        }
+
+        function openScheduleTaskModal(task) {
+            // Abre modal para agendar tarefa
+            const modal = document.createElement('div');
+            modal.id = 'scheduleTaskModal';
+            modal.className = 'modal';
+            modal.style.cssText = 'display:flex; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:10002; align-items:center; justify-content:center;';
+            
+            const today = new Date().toISOString().split('T')[0];
+            
+            modal.innerHTML = `
+                <div class="card" style="width:90%; max-width:400px;">
+                    <div class="card-header">
+                        <h3 class="card-title">📅 Agendar Tarefa</h3>
+                        <button onclick="closeScheduleModal()" style="background:none; border:none; color:var(--text-secondary); cursor:pointer;">
+                            <span class="material-icons-round">close</span>
+                        </button>
+                    </div>
+                    <p style="font-size:14px; color:var(--text-primary); margin-bottom:16px; font-weight:600;">${task.description}</p>
+                    <div class="input-group">
+                        <label style="display:block; margin-bottom:8px; font-size:14px; color:var(--text-secondary);">Data</label>
+                        <input type="date" id="scheduleDate" value="${today}" style="width:100%; padding:12px; border-radius:8px; border:1px solid var(--border-subtle); background:var(--bg-input); color:var(--text-primary);">
+                    </div>
+                    <div class="input-group">
+                        <label style="display:block; margin-bottom:8px; font-size:14px; color:var(--text-secondary);">Hora</label>
+                        <input type="time" id="scheduleTime" value="${task.time || '09:00'}" style="width:100%; padding:12px; border-radius:8px; border:1px solid var(--border-subtle); background:var(--bg-input); color:var(--text-primary);">
+                    </div>
+                    <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:24px;">
+                        <button class="btn-secondary" onclick="closeScheduleModal()">Cancelar</button>
+                        <button class="btn-primary" onclick="submitScheduleTask('${task.id}')">Agendar</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        function closeScheduleModal() {
+            const modal = document.getElementById('scheduleTaskModal');
+            if(modal) modal.remove();
+        }
+
+        async function submitScheduleTask(taskId) {
+            const date = document.getElementById('scheduleDate').value;
+            const time = document.getElementById('scheduleTime').value;
+            
+            if(!date) {
+                showToast('Selecione uma data', 'error');
+                return;
+            }
+            
+            showGlobalLoader();
+            const payload = {
+                request_type: 'crud_action',
+                item_type: 'task',
+                action: 'update',
+                item_id: taskId,
+                data: {
+                    date: date,
+                    time: time || '09:00'
+                }
+            };
+            const res = await callBackendAPI(payload);
+            hideGlobalLoader();
+            
+            if(res.status !== 'error') {
+                showToast('Tarefa agendada!', 'success');
+                closeScheduleModal();
                 loadViewData('agenda');
             } else {
                 showToast('Erro: ' + res.message, 'error');
@@ -2475,8 +2573,42 @@
             const weekContainer = document.getElementById('agenda-week');
             weekContainer.innerHTML = '';
             
+            // Render Inbox/Unscheduled Tasks primeiro
+            const unscheduled = agendaData.unscheduled || [];
+            if (unscheduled.length > 0) {
+                const inboxCol = document.createElement('div');
+                inboxCol.className = 'day-column';
+                inboxCol.style.borderLeft = '3px solid var(--accent-primary)';
+                
+                let inboxHtml = unscheduled.map(task => {
+                    const taskJson = JSON.stringify(task).replace(/"/g, '&quot;');
+                    return `
+                        <div class="task-card" style="cursor:pointer; background:var(--bg-card); border:1px dashed var(--accent-light);" onclick="openScheduleTaskModal(${taskJson})">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                <span class="badge badge-eixa" style="background:var(--accent-light); color:var(--accent-primary);"><span class="material-icons-round" style="font-size:10px;">inbox</span> INBOX</span>
+                                <button onclick="event.stopPropagation(); deleteUnscheduledTask('${task.id}')" style="background:none; border:none; color:var(--text-tertiary); cursor:pointer; padding:4px;">
+                                    <span class="material-icons-round" style="font-size:16px;">delete</span>
+                                </button>
+                            </div>
+                            <p style="font-size:14px; font-weight:600; margin:0; color:var(--text-primary);">${task.description}</p>
+                            ${task.time ? `<span class="event-chip" style="margin-top:8px; display:inline-block;">${task.time}</span>` : ''}
+                        </div>
+                    `;
+                }).join('');
+                
+                inboxCol.innerHTML = `
+                    <div class="day-col-header" style="background:var(--accent-light);">
+                        <span style="color:var(--accent-primary); font-size:12px; font-weight:600;">📥 INBOX</span><br>
+                        <span style="font-weight:700; font-size:18px; color:var(--accent-primary);">${unscheduled.length}</span>
+                    </div>
+                    ${inboxHtml}
+                `;
+                weekContainer.appendChild(inboxCol);
+            }
+            
             // Simple logic to show next 7 days
             const today = new Date();
+            const agendaByDate = agendaData.by_date || agendaData;
             for (let i = 0; i < 7; i++) {
                 const date = new Date(today);
                 date.setDate(today.getDate() + i);
@@ -2484,7 +2616,7 @@
                 const dayName = date.toLocaleDateString('pt-BR', { weekday: 'short' }).toUpperCase().replace('.', '');
                 const dayNum = date.getDate();
                 
-                const dayData = agendaData[dateStr] || { tasks: [] };
+                const dayData = agendaByDate[dateStr] || { tasks: [] };
                 
                 let tasksHtml = '';
                 dayData.tasks.forEach(task => {
