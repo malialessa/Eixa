@@ -1,0 +1,45 @@
+# == Core do Cloud Run e Flask ==
+functions-framework==3.*
+Flask[async]==2.3.3
+Flask-Cors==4.0.0
+httpx==0.27.0
+flask-sse==1.0.0
+redis==5.0.1
+
+# == Firebase e Firestore ==
+firebase-admin==6.2.0
+# FIXADO: Garantir versão do Firestore que suporta 'source'
+google-cloud-firestore==2.16.0 # Ou uma versão mais recente, por exemplo, 2.16.0 ou superior da série 2.x
+google-cloud-storage>=2.10.0
+google-cloud-bigquery>=3.11.0
+
+# == Google Authentication e APIs (NOVO AQUI!) ==
+google-auth # Pacote base de autenticação do Google
+google-auth-oauthlib # <--- VOCÊ PRECISA DESTE!
+google-api-python-client # Essencial para interagir com o Google Calendar API
+requests-oauthlib
+
+# == Geração de Conteúdo e IA (Vertex AI/Gemini) ==
+vertexai==1.49.0
+google-cloud-translate==3.11.0
+
+# == Processamento de Dados Multimídia e Texto ==
+PyMuPDF==1.23.25
+python-docx==1.1.0
+Pillow==10.1.0
+PyYAML==6.0.1
+
+# == Utilidades e Processamento de Linguagem Natural (NLP) ==
+dateparser==1.2.0
+numpy==1.26.4
+scikit-learn==1.4.1.post1
+pytz>=2023.3
+
+# == Sanitização ==
+html5lib==1.1
+bleach==6.1.0
+
+# == Dependências Cloud Run ==
+setuptools>=65.5.0
+
+# == Removido OpenTelemetry para resolver falha de deploy (MANTER ASSIM) ==

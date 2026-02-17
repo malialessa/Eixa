@@ -1,0 +1,518 @@
+/* ============================================
+   EIXA - Melhorias de UX/UI - CSS Premium
+   ============================================ */
+
+/* --- AGENDA SEMANAL - DESIGN MODERNO --- */
+
+/* Day Column com gradiente e animação */
+.day-column {
+    flex: 1;
+    min-width: 180px;
+    background: linear-gradient(135deg, var(--bg-card) 0%, rgba(124, 58, 237, 0.02) 100%);
+    border-radius: 16px;
+    padding: 20px;
+    border: 1px solid var(--border-subtle);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.day-column::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent-primary), #A78BFA, var(--accent-primary));
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.day-column:hover {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: 0 12px 40px -8px var(--accent-glow), var(--shadow-card);
+    border-color: var(--accent-light);
+}
+
+.day-column:hover::before {
+    opacity: 1;
+}
+
+/* Day Column Header melhorado */
+.day-col-header {
+    padding: 12px;
+    border-radius: 12px;
+    margin-bottom: 16px;
+    background: var(--bg-input);
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.day-col-header::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent-primary), transparent);
+}
+
+/* Task Card Premium */
+.task-card {
+    background: var(--bg-input);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+    border: 2px solid transparent;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+    backdrop-filter: blur(8px);
+}
+
+.task-card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    background: var(--accent-primary);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.task-card:hover {
+    border-color: var(--accent-primary);
+    background: var(--bg-card);
+    transform: translateX(8px) scale(1.02);
+    box-shadow: 0 8px 24px -4px var(--accent-glow);
+}
+
+.task-card:hover::after {
+    opacity: 1;
+}
+
+/* Task Card com origem Google Calendar */
+.task-card.origin-google {
+    border-left: 4px solid #4285F4;
+}
+
+.task-card.origin-google:hover {
+    box-shadow: 0 8px 24px -4px rgba(66, 133, 244, 0.3);
+}
+
+/* Task Card com origem Rotina */
+.task-card.origin-routine {
+    border-left: 4px solid #34A853;
+}
+
+.task-card.origin-routine:hover {
+    box-shadow: 0 8px 24px -4px rgba(52, 168, 83, 0.3);
+}
+
+/* Microtask Card */
+.microtask-card {
+    background: linear-gradient(135deg, var(--bg-input) 0%, rgba(245, 158, 11, 0.05) 100%);
+    border-left: 4px solid var(--status-warning);
+}
+
+.microtask-card:hover {
+    box-shadow: 0 8px 24px -4px rgba(245, 158, 11, 0.3);
+}
+
+/* --- MEMÓRIAS - CARDS EXPANSÍVEIS --- */
+
+.memory-entry {
+    background: linear-gradient(135deg, var(--bg-card) 0%, rgba(124, 58, 237, 0.03) 100%);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 16px;
+    border: 2px solid var(--border-subtle);
+    cursor: pointer;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.memory-entry::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #7C3AED, #A78BFA, #4f46e5);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.4s ease;
+}
+
+.memory-entry:hover {
+    border-color: var(--accent-primary);
+    transform: translateY(-4px) scale(1.01);
+    box-shadow: 0 12px 40px -8px var(--accent-glow), var(--shadow-card);
+}
+
+.memory-entry:hover::before {
+    transform: scaleX(1);
+}
+
+.memory-entry.expanded {
+    border-color: var(--accent-primary);
+    background: linear-gradient(135deg, var(--bg-card) 0%, rgba(124, 58, 237, 0.08) 100%);
+    box-shadow: 0 16px 48px -12px var(--accent-glow), var(--shadow-card);
+}
+
+.memory-entry.expanded::before {
+    transform: scaleX(1);
+}
+
+/* Memory Entry Meta com ícones */
+.memory-entry-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.memory-entry-toggle {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 50%;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.memory-entry-toggle:hover {
+    background: var(--bg-input);
+    color: var(--accent-primary);
+    transform: rotate(180deg);
+}
+
+/* Memory Details com animação suave */
+.memory-entry-details {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    opacity: 0;
+    transform: translateY(-10px);
+}
+
+.memory-entry.expanded .memory-entry-details {
+    opacity: 1;
+    transform: translateY(0);
+    transition: max-height 0.5s cubic-bezier(0.4, 0, 0.2, 1), 
+                opacity 0.3s ease 0.1s, 
+                transform 0.3s ease 0.1s;
+}
+
+/* Memory Tags */
+.memory-entry-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.memory-tag {
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--accent-light);
+    color: var(--accent-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    transition: all 0.2s ease;
+}
+
+.memory-tag:hover {
+    transform: scale(1.1);
+    box-shadow: 0 4px 12px var(--accent-glow);
+}
+
+/* --- KANBAN - DRAG & DROP MELHORADO --- */
+
+.kanban-board {
+    display: flex;
+    gap: 24px;
+    overflow-x: auto;
+    padding: 24px;
+}
+
+.kanban-column {
+    flex: 1;
+    min-width: 320px;
+    background: var(--bg-card);
+    border-radius: 16px;
+    padding: 20px;
+    border: 2px solid var(--border-subtle);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.kanban-column.drag-over {
+    background: linear-gradient(135deg, var(--accent-light), rgba(124, 58, 237, 0.1));
+    border: 2px dashed var(--accent-primary);
+    box-shadow: 0 12px 40px -8px var(--accent-glow);
+    transform: scale(1.02);
+}
+
+.kanban-items {
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* Kanban Card com estados de drag */
+.project-card, .micro-card {
+    background: var(--bg-input);
+    border-radius: 12px;
+    padding: 16px;
+    border: 2px solid var(--border-subtle);
+    cursor: grab;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+}
+
+.project-card:hover, .micro-card:hover {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: 0 8px 24px -4px var(--accent-glow);
+    border-color: var(--accent-primary);
+}
+
+.project-card:active, .micro-card:active {
+    cursor: grabbing;
+    transform: rotate(5deg) scale(1.05);
+    opacity: 0.7;
+}
+
+.project-card.dragging, .micro-card.dragging {
+    opacity: 0.5;
+    transform: rotate(5deg) scale(1.05);
+    box-shadow: 0 20px 60px -10px var(--accent-glow);
+}
+
+/* --- CALENDAR STATUS BADGE - MAIS VISÍVEL --- */
+
+.calendar-status-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 13px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+}
+
+.calendar-status-badge::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s ease;
+}
+
+.calendar-status-badge:hover::before {
+    left: 100%;
+}
+
+.calendar-status-badge.connected {
+    background: linear-gradient(135deg, #10B981, #059669);
+    color: white;
+    box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3);
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.calendar-status-badge.disconnected {
+    background: var(--bg-input);
+    border: 2px solid var(--status-warning);
+    color: var(--status-warning);
+}
+
+.calendar-status-badge.disconnected:hover {
+    background: rgba(245, 158, 11, 0.1);
+    transform: scale(1.05);
+}
+
+@keyframes pulse {
+    0%, 100% { 
+        box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3); 
+    }
+    50% { 
+        box-shadow: 0 6px 24px rgba(16, 185, 129, 0.5); 
+    }
+}
+
+.calendar-status-icon {
+    font-size: 18px;
+    transition: transform 0.3s ease;
+}
+
+.calendar-status-badge:hover .calendar-status-icon {
+    transform: rotate(15deg) scale(1.1);
+}
+
+/* --- BOTÕES DE AÇÃO MELHORADOS --- */
+
+.calendar-connect-btn {
+    padding: 10px 16px;
+    border-radius: 10px;
+    font-weight: 600;
+    border: none;
+    background: linear-gradient(135deg, var(--accent-primary), #A78BFA);
+    color: white;
+    cursor: pointer;
+    font-family: var(--font-display);
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px var(--accent-glow);
+    margin-left: 8px;
+}
+
+.calendar-connect-btn:hover {
+    transform: translateY(-2px) scale(1.05);
+    box-shadow: 0 6px 20px var(--accent-glow);
+}
+
+.calendar-connect-btn:active {
+    transform: translateY(0) scale(0.98);
+}
+
+/* --- MODAIS MELHORADOS --- */
+
+.modal {
+    backdrop-filter: blur(12px);
+}
+
+.modal .card {
+    animation: modalSlideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    max-width: 600px;
+    margin: auto;
+}
+
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-40px) scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* Input fields melhorados */
+.modal input, .modal select, .modal textarea {
+    border: 2px solid var(--border-subtle);
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-family: var(--font-body);
+    transition: all 0.3s ease;
+    background: var(--bg-input);
+}
+
+.modal input:focus, .modal select:focus, .modal textarea:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 4px var(--accent-glow);
+    background: var(--bg-card);
+}
+
+/* --- LOADING STATES --- */
+
+.global-loader {
+    backdrop-filter: blur(8px);
+}
+
+.loader-spinner {
+    border: 4px solid var(--accent-light);
+    border-top-color: var(--accent-primary);
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* --- SCROLL BEHAVIOUR --- */
+
+.chat-messages::-webkit-scrollbar,
+.kanban-board::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.chat-messages::-webkit-scrollbar-track,
+.kanban-board::-webkit-scrollbar-track {
+    background: var(--bg-input);
+    border-radius: 4px;
+}
+
+.chat-messages::-webkit-scrollbar-thumb,
+.kanban-board::-webkit-scrollbar-thumb {
+    background: var(--accent-light);
+    border-radius: 4px;
+    transition: background 0.3s ease;
+}
+
+.chat-messages::-webkit-scrollbar-thumb:hover,
+.kanban-board::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-primary);
+}
+
+/* --- RESPONSIVE MELHORADO --- */
+
+@media (max-width: 768px) {
+    .day-column {
+        min-width: 140px;
+        padding: 16px;
+    }
+    
+    .task-card {
+        padding: 12px;
+    }
+    
+    .memory-entry {
+        padding: 16px;
+    }
+    
+    .kanban-column {
+        min-width: 280px;
+    }
+}
+
+/* --- DARK MODE REFINEMENTS --- */
+
+body.dark-mode .day-column {
+    background: linear-gradient(135deg, var(--bg-card) 0%, rgba(167, 139, 250, 0.05) 100%);
+}
+
+body.dark-mode .memory-entry {
+    background: linear-gradient(135deg, var(--bg-card) 0%, rgba(167, 139, 250, 0.08) 100%);
+}
+
+body.dark-mode .task-card,
+body.dark-mode .project-card,
+body.dark-mode .micro-card {
+    border-color: #262626;
+}
+
+body.dark-mode .calendar-status-badge.connected {
+    box-shadow: 0 4px 16px rgba(16, 185, 129, 0.5);
+}
